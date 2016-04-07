@@ -3,11 +3,11 @@
   re.h -
 
   $Author: matz $
-  $Revision: 1.1.1.1 $
-  $Date: 1994/06/17 14:23:50 $
+  $Revision: 1.2 $
+  $Date: 1996/12/25 09:47:52 $
   created at: Thu Sep 30 14:18:32 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
@@ -18,10 +18,17 @@
 #include <stdio.h>
 
 #include "regex.h"
-typedef struct Regexp {
-        struct re_pattern_buffer pat;
-        struct re_registers regs;
-} Regexp;
+
+typedef struct re_pattern_buffer Regexp;
+
+struct RMatch {
+    struct RBasic basic;
+    UINT len;
+    char *ptr;
+    struct re_registers *regs;
+};
+
+#define RMATCH(obj)  (R_CAST(RMatch)(obj))
 
 VALUE re_regcomp();
 VALUE re_regsub();

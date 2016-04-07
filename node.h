@@ -3,57 +3,76 @@
   node.h -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:50 $
+  $Date: 1996/12/25 10:42:41 $
   created at: Fri May 28 15:14:02 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
 #ifndef NODE_H
 #define NODE_H
 
+struct global_entry *rb_global_entry();
+
 enum node_type {
+    NODE_METHOD,
+    NODE_FBODY,
     NODE_CFUNC,
     NODE_SCOPE,
     NODE_BLOCK,
     NODE_IF,
+    NODE_UNLESS,
     NODE_CASE,
     NODE_WHEN,
-    NODE_UNLESS,
+    NODE_OPT_N,
     NODE_WHILE,
     NODE_UNTIL,
-    NODE_DO,
+    NODE_ITER,
     NODE_FOR,
-    NODE_PROT,
+    NODE_BEGIN,
+    NODE_RESCUE,
+    NODE_RESBODY,
+    NODE_ENSURE,
     NODE_AND,
     NODE_OR,
+    NODE_NOT,
     NODE_MASGN,
     NODE_LASGN,
+    NODE_DASGN,
     NODE_GASGN,
     NODE_IASGN,
     NODE_CASGN,
+    NODE_OP_ASGN1,
+    NODE_OP_ASGN2,
     NODE_CALL,
-    NODE_CALL2,
+    NODE_FCALL,
     NODE_SUPER,
     NODE_ZSUPER,
     NODE_ARRAY,
     NODE_ZARRAY,
     NODE_HASH,
-    NODE_REDO,
-    NODE_BREAK,
-    NODE_CONTINUE,
     NODE_RETURN,
-    NODE_RETRY,
     NODE_YIELD,
     NODE_LVAR,
+    NODE_DVAR,
     NODE_GVAR,
     NODE_IVAR,
-    NODE_MVAR,
     NODE_CVAR,
     NODE_CONST,
+    NODE_NTH_REF,
+    NODE_BACK_REF,
+    NODE_MATCH_REF,
+    NODE_LASTLINE,
+    NODE_MATCH,
     NODE_LIT,
     NODE_STR,
+    NODE_DSTR,
+    NODE_XSTR,
+    NODE_DXSTR,
+    NODE_EVSTR,
+    NODE_DREGX,
+    NODE_DREGX_ONCE,
     NODE_ARGS,
     NODE_DEFN,
     NODE_DEFS,
@@ -61,32 +80,38 @@ enum node_type {
     NODE_UNDEF,
     NODE_CLASS,
     NODE_MODULE,
-    NODE_INC,
+    NODE_COLON2,
+    NODE_CNAME,
+    NODE_CREF,
+    NODE_DOT2,
     NODE_DOT3,
+    NODE_FLIP2,
+    NODE_FLIP3,
     NODE_ATTRSET,
     NODE_SELF,
     NODE_NIL,
+    NODE_DEFINED,
+    NODE_TAG,
 };
 
-typedef struct node {
-    enum node_type type;
-    char *src;
-    unsigned int line;
+typedef struct RNode {
+    UINT flags;
+    char *file;
     union {
-	struct node *node;
+	struct RNode *node;
 	ID id;
 	VALUE value;
 	VALUE (*cfunc)();
 	ID *tbl;
-	enum mth_scope scope;
     } u1;
     union {
-	struct node *node;
+	struct RNode *node;
 	ID id;
 	int argc;
+	VALUE value;
     } u2;
     union {
-	struct node *node;
+	struct RNode *node;
 	ID id;
 	int state;
 	struct global_entry *entry;
@@ -95,14 +120,25 @@ typedef struct node {
     } u3;
 } NODE;
 
+#define RNODE(obj)  (R_CAST(RNode)(obj))
+
+#define nd_type(n) (((RNODE(n))->flags>>10)&0x7f)
+#define nd_set_type(n,t) \
+    RNODE(n)->flags=(RNODE(n)->flags&~FL_UMASK|(((t)<<10)&FL_UMASK))
+
+#define nd_line(n) (((RNODE(n))->flags>>17)&0x7fff)
+#define nd_set_line(n,l) \
+    RNODE(n)->flags=(RNODE(n)->flags&~(-1<<17)|(((l)&0x7fff)<<17))
+
 #define nd_head  u1.node
-#define nd_last  u2.node
+#define nd_alen  u2.argc
 #define nd_next  u3.node
 
 #define nd_cond  u1.node
 #define nd_body  u2.node
 #define nd_else  u3.node
-#define nd_break u3.state
+
+#define nd_orig  u3.value
 
 #define nd_resq  u2.node
 #define nd_ensr  u3.node
@@ -125,21 +161,23 @@ typedef struct node {
 #define nd_iter  u3.node
 
 #define nd_value u2.node
+#define nd_aid   u3.id
 
 #define nd_lit   u1.value
 
 #define nd_frml  u1.node
 #define nd_rest  u2.argc
+#define nd_opt   u1.node
 
 #define nd_recv  u1.node
 #define nd_mid   u2.id
 #define nd_args  u3.node
 
-#define nd_scope u1.scope
+#define nd_noex  u1.id
 #define nd_defn  u3.node
 
-#define nd_new   u1.id
-#define nd_old   u2.id
+#define nd_new   u2.id
+#define nd_old   u3.id
 
 #define nd_cfnc  u1.cfunc
 #define nd_argc  u2.argc
@@ -148,69 +186,98 @@ typedef struct node {
 #define nd_super u3.id
 
 #define nd_modl  u1.id
+#define nd_clss  u1.value
 
 #define nd_beg   u1.node
 #define nd_end   u2.node
 #define nd_state u3.state
+#define nd_rval  u3.value
 
-#define nd_rval  u3.node
+#define nd_nth   u2.argc
 
-#define NEW_DEFN(i,d,m) newnode(NODE_DEFN,m,i,d)
-#define NEW_DEFS(r,i,d) newnode(NODE_DEFS,r,i,d)
-#define NEW_CFUNC(f,c) newnode(NODE_CFUNC,f,c,Qnil)
+#define nd_tag   u1.id
+#define nd_tlev  u3.cnt
+#define nd_tval  u2.value
+
+#define NEW_METHOD(n,x) newnode(NODE_METHOD,x,n,0)
+#define NEW_FBODY(n,i,o) newnode(NODE_FBODY,n,i,o)
+#define NEW_DEFN(i,a,d,p) newnode(NODE_DEFN,p,i,NEW_RFUNC(a,d))
+#define NEW_DEFS(r,i,a,d) newnode(NODE_DEFS,r,i,NEW_RFUNC(a,d))
+#define NEW_CFUNC(f,c) newnode(NODE_CFUNC,f,c,0)
 #define NEW_RFUNC(b1,b2) NEW_SCOPE(block_append(b1,b2))
-#define NEW_SCOPE(b) newnode(NODE_SCOPE, local_tbl(),(b),local_cnt(0))
-#define NEW_BLOCK(a) newnode(NODE_BLOCK,a,Qnil,Qnil)
+#define NEW_SCOPE(b) newnode(NODE_SCOPE,local_tbl(),(b),cur_cref)
+#define NEW_BLOCK(a) newnode(NODE_BLOCK,a,1,0)
 #define NEW_IF(c,t,e) newnode(NODE_IF,c,t,e)
 #define NEW_UNLESS(c,t,e) newnode(NODE_UNLESS,c,t,e)
-#define NEW_CASE(h,b) newnode(NODE_CASE,h,b,Qnil)
+#define NEW_EXNOT(c) newnode(NODE_EXNOT,c,0,0)
+#define NEW_CASE(h,b) newnode(NODE_CASE,h,b,0)
 #define NEW_WHEN(c,t,e) newnode(NODE_WHEN,c,t,e)
-#define NEW_WHILE(c,b) newnode(NODE_WHILE,c,b,Qnil)
-#define NEW_UNTIL(c,b) newnode(NODE_UNTIL,c,b,Qnil)
+#define NEW_OPT_N(b) newnode(NODE_OPT_N,0,b,0)
+#define NEW_WHILE(c,b,n) newnode(NODE_WHILE,c,b,n)
+#define NEW_UNTIL(c,b,n) newnode(NODE_UNTIL,c,b,n)
 #define NEW_FOR(v,i,b) newnode(NODE_FOR,v,b,i)
-#define NEW_DO(v,i,b) newnode(NODE_DO,v,b,i)
-#define NEW_PROT(b,ex,en) newnode(NODE_PROT,b,ex,en)
-#define NEW_REDO() newnode(NODE_REDO,Qnil,Qnil,Qnil)
-#define NEW_BREAK() newnode(NODE_BREAK,Qnil,Qnil,Qnil)
-#define NEW_CONT()  newnode(NODE_CONTINUE,Qnil,Qnil,Qnil)
-#define NEW_RETRY() newnode(NODE_RETRY,Qnil,Qnil,Qnil)
-#define NEW_RET(s)  newnode(NODE_RETURN,s,Qnil,Qnil)
-#define NEW_YIELD(a) newnode(NODE_YIELD,a,Qnil,Qnil)
+#define NEW_ITER(v,i,b) newnode(NODE_ITER,v,b,i)
+#define NEW_BEGIN(b) newnode(NODE_BEGIN,0,b,0)
+#define NEW_RESCUE(b,res) newnode(NODE_RESCUE,b,res,0)
+#define NEW_RESBODY(a,ex,n) newnode(NODE_RESBODY,n,ex,a)
+#define NEW_ENSURE(b,en) newnode(NODE_ENSURE,b,0,en)
+#define NEW_RET(s)  newnode(NODE_RETURN,s,0,0)
+#define NEW_YIELD(a) newnode(NODE_YIELD,a,0,0)
 #define NEW_LIST(a) NEW_ARRAY(a)
-#define NEW_ARRAY(a) newnode(NODE_ARRAY,a,Qnil,Qnil)
-#define NEW_ZARRAY() newnode(NODE_ZARRAY,Qnil,Qnil,Qnil)
-#define NEW_HASH(a) newnode(NODE_HASH,a,Qnil,Qnil)
-#define NEW_AND(a,b) newnode(NODE_AND,a,b,Qnil)
-#define NEW_OR(a,b)  newnode(NODE_OR,a,b,Qnil)
-#define NEW_MASGN(l,val) newnode(NODE_MASGN,l,val,Qnil)
+#define NEW_ARRAY(a) newnode(NODE_ARRAY,a,1,0)
+#define NEW_ZARRAY() newnode(NODE_ZARRAY,0,0,0)
+#define NEW_HASH(a) newnode(NODE_HASH,a,0,0)
+#define NEW_NOT(a)   newnode(NODE_NOT,0,a,0)
+#define NEW_MASGN(l,r) newnode(NODE_MASGN,l,0,r)
 #define NEW_GASGN(v,val) newnode(NODE_GASGN,v,val,rb_global_entry(v))
 #define NEW_LASGN(v,val) newnode(NODE_LASGN,v,val,local_cnt(v))
-#define NEW_IASGN(v,val) newnode(NODE_IASGN,v,val,Qnil)
-#define NEW_CASGN(v,val) newnode(NODE_CASGN,v,val,Qnil)
-#define NEW_GVAR(v) newnode(NODE_GVAR,v,Qnil,rb_global_entry(v))
-#define NEW_LVAR(v) newnode(NODE_LVAR,v,Qnil,local_cnt(v))
-#define NEW_IVAR(v) newnode(NODE_IVAR,v,Qnil,Qnil)
-#define NEW_MVAR(v) newnode(NODE_MVAR,v,Qnil,Qnil)
-#define NEW_CVAR(v) newnode(NODE_CVAR,v,Qnil,Qnil)
-#define NEW_LIT(l) newnode(NODE_LIT,l,Qnil,Qnil)
-#define NEW_STR(s) newnode(NODE_STR,s,Qnil,Qnil)
+#define NEW_DASGN(v,val) newnode(NODE_DASGN,v,val,0);
+#define NEW_IASGN(v,val) newnode(NODE_IASGN,v,val,0)
+#define NEW_CASGN(v,val) newnode(NODE_CASGN,v,val,0)
+#define NEW_OP_ASGN1(p,id,a) newnode(NODE_OP_ASGN1,p,id,a)
+#define NEW_OP_ASGN2(r,i,o,val) newnode(NODE_OP_ASGN2,r,val,NEW_OP_ASGN3(i,o))
+#define NEW_OP_ASGN3(i,o) newnode(NODE_OP_ASGN2,i,o,0)
+#define NEW_GVAR(v) newnode(NODE_GVAR,v,0,rb_global_entry(v))
+#define NEW_LVAR(v) newnode(NODE_LVAR,v,0,local_cnt(v))
+#define NEW_DVAR(v) newnode(NODE_DVAR,v,0,0);
+#define NEW_IVAR(v) newnode(NODE_IVAR,v,0,0)
+#define NEW_CVAR(v) newnode(NODE_CVAR,v,0,0)
+#define NEW_NTH_REF(n) newnode(NODE_NTH_REF,0,n,local_cnt('~'))
+#define NEW_BACK_REF(n) newnode(NODE_BACK_REF,0,n,local_cnt('~'))
+#define NEW_MATCH(c) newnode(NODE_MATCH,c,0,0)
+#define NEW_LIT(l) newnode(NODE_LIT,l,0,0)
+#define NEW_STR(s) newnode(NODE_STR,s,0,0)
+#define NEW_DSTR(s) newnode(NODE_DSTR,s,0,0)
+#define NEW_XSTR(s) newnode(NODE_XSTR,s,0,0)
+#define NEW_DXSTR(s) newnode(NODE_DXSTR,s,0,0)
+#define NEW_EVSTR(s,l) newnode(NODE_EVSTR,str_new(s,l),0,0)
 #define NEW_CALL(r,m,a) newnode(NODE_CALL,r,m,a)
-#define NEW_CALL2(r,m,a) newnode(NODE_CALL2,r,m,a)
-#define NEW_SUPER(a) newnode(NODE_SUPER,Qnil,Qnil,a)
-#define NEW_ZSUPER() newnode(NODE_ZSUPER,Qnil,Qnil,Qnil)
-#define NEW_ARGS(f,r) newnode(NODE_ARGS,f,r,Qnil)
-#define NEW_ALIAS(n,o) newnode(NODE_ALIAS,n,o,Qnil)
-#define NEW_UNDEF(i) newnode(NODE_UNDEF,Qnil,i,Qnil)
-#define NEW_CLASS(n,b,s) newnode(NODE_CLASS,n,NEW_SCOPE(b),s)
-#define NEW_MODULE(n,b) newnode(NODE_MODULE,n,NEW_SCOPE(b),Qnil)
-#define NEW_INC(m) newnode(NODE_INC,m,Qnil,Qnil)
+#define NEW_FCALL(m,a) newnode(NODE_FCALL,0,m,a)
+#define NEW_SUPER(a) newnode(NODE_SUPER,0,0,a)
+#define NEW_ZSUPER() newnode(NODE_ZSUPER,0,0,0)
+#define NEW_ARGS(f,o,r) newnode(NODE_ARGS,o,r,f)
+#define NEW_ALIAS(n,o) newnode(NODE_ALIAS,0,n,o)
+#define NEW_UNDEF(i) newnode(NODE_UNDEF,0,i,0)
+#define NEW_CLASS(n,b,s) newnode(NODE_CLASS,n,NEW_CBODY(b),s)
+#define NEW_MODULE(n,b) newnode(NODE_MODULE,n,NEW_CBODY(b),0)
+#define NEW_COLON2(c,i) newnode(NODE_COLON2,c,i,0)
+#define NEW_CREF0() (cur_cref=newnode(NODE_CREF,RNODE(the_frame->cbase)->nd_clss,0,0))
+#define NEW_CREF() (cur_cref=newnode(NODE_CREF,0,0,cur_cref))
+#define NEW_CBODY(b) (cur_cref->nd_body=NEW_SCOPE(b),cur_cref)
+#define NEW_DOT2(b,e) newnode(NODE_DOT2,b,e,0)
 #define NEW_DOT3(b,e) newnode(NODE_DOT3,b,e,0)
-#define NEW_ATTRSET(a) newnode(NODE_ATTRSET,a,Qnil,Qnil)
-#define NEW_SELF() newnode(NODE_SELF,Qnil,Qnil,Qnil)
-#define NEW_NIL() newnode(NODE_NIL,Qnil,Qnil,Qnil)
+#define NEW_ATTRSET(a) newnode(NODE_ATTRSET,a,0,0)
+#define NEW_SELF() newnode(NODE_SELF,0,0,0)
+#define NEW_NIL() newnode(NODE_NIL,0,0,0)
+#define NEW_DEFINED(e) newnode(NODE_DEFINED,e,0,0)
 
 NODE *newnode();
-NODE *rb_get_method_body();
-void freenode();
+VALUE rb_method_booundp();
+
+#define NOEX_PUBLIC  0
+#define NOEX_PRIVATE 1
+
+NODE *compile_string();
+NODE *compile_file();
 
 #endif

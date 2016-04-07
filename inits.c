@@ -3,29 +3,35 @@
   inits.c -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:50 $
+  $Date: 1996/12/25 10:42:38 $
   created at: Tue Dec 28 16:01:58 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
 #include "ruby.h"
 
+void
 rb_call_inits()
 {
     Init_sym();
     Init_var_tables();
     Init_Object();
+#ifdef THREAD
+    Init_Thread();
+#endif
     Init_GC();
+    Init_eval();
     Init_Comparable();
     Init_Enumerable();
+    Init_String();
+    Init_Exception();
     Init_Numeric();
     Init_Bignum();
     Init_Array();
-    Init_Dict();
+    Init_Hash();
     Init_Struct();
-    Init_String();
     Init_Regexp();
     Init_pack();
     Init_Range();
@@ -33,18 +39,11 @@ rb_call_inits()
     Init_Dir();
     Init_Time();
     Init_Random();
+    Init_signal();
     Init_process();
-    Init_Etc();
     Init_load();
+    Init_Proc();
     Init_Math();
-#ifdef USE_DBM
-    Init_DBM();
-#endif
-#ifdef HAVE_SOCKET
-    Init_Socket();
-#endif
-    /* new Inits comes between here.. */
-
-    /* .. and here. */
+    Init_ext();
     Init_version();
 }

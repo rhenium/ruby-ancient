@@ -1,6 +1,5 @@
-* $0への代入がpsの出力を変化させるように
-* rubyで定義する変数hookの実現
-* FUNC形式のメソッドは本当に必要か
+* パッケージまたは大域変数のアクセス制御
+* format機能
+* perlのようなsetuid check
 * write debugger for ruby
-* re-write regex code for speeding
-* byte code interpretor
+* re-write regex code for speed and copyright

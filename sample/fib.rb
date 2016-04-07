@@ -1,4 +1,6 @@
-def fib (n)
+# calculate Fibonacci(20)
+# for benchmark
+def fib(n)
   if n<2
     n
   else

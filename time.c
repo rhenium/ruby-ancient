@@ -3,20 +3,36 @@
   time.c -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:51 $
+  $Date: 1996/12/25 09:30:28 $
   created at: Tue Dec 28 14:31:59 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
 #include "ruby.h"
 #include <sys/types.h>
-#include <sys/time.h>
-#include <sys/times.h>
 
-static VALUE C_Time;
-extern VALUE M_Comparable;
+#include <time.h>
+#ifdef HAVE_SYS_TIME_H
+# include <sys/time.h>
+#else
+struct timeval {
+        long    tv_sec;         /* seconds */
+        long    tv_usec;        /* and microseconds */
+};
+#endif
+
+#ifdef HAVE_SYS_TIMES_H
+#include <sys/times.h>
+#endif
+#include <math.h>
+
+static VALUE cTime;
+#if defined(HAVE_TIMES) || defined(NT)
+static VALUE S_Tms;
+#endif
+extern VALUE mComparable;
 
 struct time_object {
     struct timeval tv;
@@ -27,45 +43,39 @@ struct time_object {
     int tm_got;
 };
 
-#define GetTimeval(obj, tobj) \
-    Get_Data_Struct(obj, "tv", struct time_object, tobj)
-#define MakeTimeval(obj,tobj) {\
-    Make_Data_Struct(obj, "tv", struct time_object, Qnil, Qnil, tobj);\
-    tobj->tm_got=0;\
+#define GetTimeval(obj, tobj) {\
+    Get_Data_Struct(obj, struct time_object, tobj);\
 }
 
 static VALUE
-Ftime_now(class)
+time_s_now(class)
     VALUE class;
 {
-    VALUE obj = obj_alloc(class);
+    VALUE obj;
     struct time_object *tobj;
 
-    GC_LINK;
-    GC_PRO(obj);
-    MakeTimeval(obj, tobj);
+    obj = Make_Data_Struct(class, struct time_object, 0, 0, tobj);
+    tobj->tm_got=0;
 
     if (gettimeofday(&(tobj->tv), 0) == -1) {
 	rb_sys_fail("gettimeofday");
     }
-    GC_UNLINK;
 
     return obj;
 }
 
 static VALUE
 time_new_internal(class, sec, usec)
+    VALUE class;
     int sec, usec;
 {
-    VALUE obj = obj_alloc(class);
+    VALUE obj;
     struct time_object *tobj;
 
-    GC_LINK;
-    GC_PRO(obj);
-    MakeTimeval(obj, tobj);
+    obj = Make_Data_Struct(class, struct time_object, 0, 0, tobj);
+    tobj->tm_got=0;
     tobj->tv.tv_sec = sec;
-    tobj->tv.tv_usec =usec;
-    GC_UNLINK;
+    tobj->tv.tv_usec = usec;
 
     return obj;
 }
@@ -74,66 +84,188 @@ VALUE
 time_new(sec, usec)
     int sec, usec;
 {
-    return time_new_internal(C_Time, sec, usec);
+    return time_new_internal(cTime, sec, usec);
 }
 
-struct timeval*
+struct timeval
 time_timeval(time)
     VALUE time;
 {
     struct time_object *tobj;
-    static struct timeval t, *tp;
+    struct timeval t;
 
     switch (TYPE(time)) {
       case T_FIXNUM:
 	t.tv_sec = FIX2UINT(time);
 	if (t.tv_sec < 0)
-	    Fail("time must be positive");
+	    ArgError("time must be positive");
 	t.tv_usec = 0;
-	tp = &t;
 	break;
 
       case T_FLOAT:
 	{
-	    double floor();
 	    double seconds, microseconds;
 
 	    if (RFLOAT(time)->value < 0.0)
-		Fail("time must be positive");
+		ArgError("time must be positive");
 	    seconds = floor(RFLOAT(time)->value);
 	    microseconds = (RFLOAT(time)->value - seconds) * 1000000.0;
 	    t.tv_sec = seconds;
 	    t.tv_usec = microseconds;
-	    tp = &t;
 	}
+	break;
+
+      case T_BIGNUM:
+	t.tv_sec = NUM2INT(time);
+	t.tv_usec = 0;
 	break;
 
       default:
-	if (!obj_is_kind_of(time, C_Time)) {
-	    Fail("Can't convert %s into Time", rb_class2name(CLASS_OF(time)));
+	if (!obj_is_kind_of(time, cTime)) {
+	    TypeError("Can't convert %s into Time",
+		      rb_class2name(CLASS_OF(time)));
 	}
 	GetTimeval(time, tobj);
-	tp = &(tobj->tv);
+	t = tobj->tv;
 	break;
     }
-    return tp;
+    return t;
 }
 
 static VALUE
-Ftime_at(class, time)
+time_s_at(class, time)
     VALUE class, time;
-{ 
-   VALUE obj;
-    int sec, usec;
-    struct time_object *tobj;
-    struct timeval *tp;
+{
+    struct timeval tv;
 
-    tp = time_timeval(time);
-    return time_new_internal(class, tp->tv_sec, tp->tv_usec);
-
+    tv = time_timeval(time);
+    return time_new_internal(class, tv.tv_sec, tv.tv_usec);
 }
+
+static char *months [12] = {
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+};
+
+static void
+time_arg(argc, argv, args)
+    int argc;
+    VALUE *argv;
+    int *args;
+{
+    VALUE v[6];
+    int i;
+
+    rb_scan_args(argc, argv, "15", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
+
+    args[0] = NUM2INT(v[0]);
+    if (args[0] < 70) args[0] += 100;
+    if (args[0] > 1900) args[0] -= 1900;
+    if (v[1] == Qnil) {
+	args[1] = 0;
+    }
+    else if (TYPE(v[1]) == T_STRING) {
+	args[1] = -1;
+	for (i=0; i<12; i++) {
+	    if (strcasecmp(months[i], RSTRING(v[1])->ptr) == 0) {
+		args[1] = i;
+		break;
+	    }
+	}
+    }
+    else {
+	args[1] = NUM2INT(v[1]) - 1;
+    }
+    if (v[2] == Qnil) {
+	args[2] = 1;
+    }
+    else {
+	args[2] = NUM2INT(v[2]);
+    }
+    for (i=3;i<6;i++) {
+	if (v[i] == Qnil) {
+	    args[i] = 0;
+	}
+	else {
+	    args[i] = NUM2INT(v[i]);
+	}
+    }
+
+    /* value validation */
+    if (   args[0] < 70|| args[1] > 137
+	|| args[1] < 0 || args[1] > 11
+	|| args[2] < 1 || args[2] > 31
+	|| args[3] < 0 || args[3] > 23
+	|| args[4] < 0 || args[4] > 60
+	|| args[5] < 0 || args[5] > 61)
+	ArgError("argument out of range");
+}
+
 static VALUE
-Ftime_to_i(time)
+time_gm_or_local(argc, argv, gm_or_local)
+    int argc;
+    VALUE *argv;
+    int gm_or_local;
+{
+    int args[6];
+    struct timeval tv;
+    struct tm *tm;
+    time_t guess, t;
+    int diff;
+    struct tm *(*fn)();
+
+    fn = (gm_or_local) ? gmtime : localtime;
+    time_arg(argc, argv, args);
+
+    gettimeofday(&tv, 0);
+    guess = tv.tv_sec;
+
+    tm = (*fn)(&guess);
+    if (!tm) goto error;
+    t = args[0];
+    while (diff = t - tm->tm_year) {
+	guess += diff * 364 * 24 * 3600;
+	if (guess < 0) ArgError("too far future");
+	tm = (*fn)(&guess);
+	if (!tm) goto error;
+    }
+    t = args[1];
+    while (diff = t - tm->tm_mon) {
+	guess += diff * 27 * 24 * 3600;
+	tm = (*fn)(&guess);
+	if (!tm) goto error;
+    }
+    guess += (args[2] - tm->tm_mday) * 3600 * 24;
+    guess += (args[3] - tm->tm_hour) * 3600;
+    guess += (args[4] - tm->tm_min) * 60;
+    guess += args[5] - tm->tm_sec;
+
+    return time_new_internal(cTime, guess, 0);
+
+  error:
+    ArgError("gmtime error");
+}
+
+static VALUE
+time_s_timegm(argc, argv, obj)
+    int argc;
+    VALUE *argv;
+    VALUE obj;
+{
+    return time_gm_or_local(argc, argv, 1);
+}
+
+static VALUE
+time_s_timelocal(argc, argv, obj)
+    int argc;
+    VALUE *argv;
+    VALUE obj;
+{
+    return time_gm_or_local(argc, argv, 0);
+}
+
+static VALUE
+time_to_i(time)
     VALUE time;
 {
     struct time_object *tobj;
@@ -143,7 +275,17 @@ Ftime_to_i(time)
 }
 
 static VALUE
-Ftime_usec(time)
+time_to_f(time)
+    VALUE time;
+{
+    struct time_object *tobj;
+
+    GetTimeval(time, tobj);
+    return float_new((double)tobj->tv.tv_sec+(double)tobj->tv.tv_usec/1000000);
+}
+
+static VALUE
+time_usec(time)
     VALUE time;
 {
     struct time_object *tobj;
@@ -153,14 +295,33 @@ Ftime_usec(time)
 }
 
 static VALUE
-Ftime_cmp(time1, time2)
+time_cmp(time1, time2)
     VALUE time1, time2;
 {
     struct time_object *tobj1, *tobj2;
     int i;
 
     GetTimeval(time1, tobj1);
-    if (obj_is_member_of(time2, C_Time)) {
+    switch (TYPE(time2)) {
+      case T_FIXNUM:
+	i = FIX2INT(time2);
+	if (tobj1->tv.tv_sec == i) return INT2FIX(0);
+	if (tobj1->tv.tv_sec > i) return INT2FIX(1);
+	return FIX2INT(-1);
+	
+      case T_FLOAT:
+	{
+	    double t;
+
+	    if (tobj1->tv.tv_sec == (int)RFLOAT(time2)->value) return INT2FIX(0);
+	    t = (double)tobj1->tv.tv_sec + (double)tobj1->tv.tv_usec*1e-6;
+	    if (tobj1->tv.tv_sec == RFLOAT(time2)->value) return INT2FIX(0);
+	    if (tobj1->tv.tv_sec > RFLOAT(time2)->value) return INT2FIX(1);
+	    return FIX2INT(-1);
+	}
+    }
+
+    if (obj_is_instance_of(time2, cTime)) {
 	GetTimeval(time2, tobj2);
 	if (tobj1->tv.tv_sec == tobj2->tv.tv_sec) {
 	    if (tobj1->tv.tv_usec == tobj2->tv.tv_usec) return INT2FIX(0);
@@ -177,7 +338,7 @@ Ftime_cmp(time1, time2)
 }
 
 static VALUE
-Ftime_hash(time)
+time_hash(time)
     VALUE time;
 {
     struct time_object *tobj;
@@ -189,7 +350,7 @@ Ftime_hash(time)
 }
 
 static VALUE
-Ftime_localtime(time)
+time_localtime(time)
     VALUE time;
 {
     struct time_object *tobj;
@@ -206,7 +367,7 @@ Ftime_localtime(time)
 }
 
 static VALUE
-Ftime_gmtime(time)
+time_gmtime(time)
     VALUE time;
 {
     struct time_object *tobj;
@@ -223,17 +384,16 @@ Ftime_gmtime(time)
 }
 
 static VALUE
-Ftime_asctime(time)
+time_asctime(time)
     VALUE time;
 {
     struct time_object *tobj;
-    char *ct;
     char buf[32];
     int len;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
 #ifndef HAVE_TM_ZONE
     if (tobj->gmt == 1)
@@ -247,21 +407,32 @@ Ftime_asctime(time)
 }
 
 static VALUE
-Ftime_coerce(time1, time2)
+time_coerce(time1, time2)
     VALUE time1, time2;
 {
+    if (TYPE(time2) == T_FLOAT) {
+	double d = RFLOAT(time2)->value;
+	unsigned int i = (unsigned int) d;
+
+	return time_new_internal(i, (int)(d - (double)i)*1e6);
+    }
+
     return time_new(CLASS_OF(time1), NUM2INT(time2), 0);
 }
 
 static VALUE
-Ftime_plus(time1, time2)
+time_plus(time1, time2)
     VALUE time1, time2;
 {
     struct time_object *tobj1, *tobj2;
     int sec, usec;
 
     GetTimeval(time1, tobj1);
-    if (obj_is_member_of(time2, C_Time)) {
+    if (TYPE(time2) == T_FLOAT) {
+	sec = tobj1->tv.tv_sec + (unsigned int)RFLOAT(time2)->value;
+	usec = tobj1->tv.tv_usec + (RFLOAT(time2)->value - (double)sec)*1e6;
+    }
+    else if (obj_is_instance_of(time2, cTime)) {
 	GetTimeval(time2, tobj2);
 	sec = tobj1->tv.tv_sec + tobj2->tv.tv_sec;
 	usec = tobj1->tv.tv_usec + tobj2->tv.tv_usec;
@@ -269,157 +440,168 @@ Ftime_plus(time1, time2)
     else {
 	sec = tobj1->tv.tv_sec + NUM2INT(time2);
 	usec = tobj1->tv.tv_usec;
-	if (usec >= 1000000) {
-	    sec++;
-	    usec -= 1000000;
-	}
+    }
+
+    if (usec >= 1000000) {	/* usec overflow */
+	sec++;
+	usec -= 1000000;
     }
     return time_new(sec, usec);
 }
 
 static VALUE
-Ftime_minus(time1, time2)
+time_minus(time1, time2)
     VALUE time1, time2;
 {
     struct time_object *tobj1, *tobj2;
     int sec, usec;
 
     GetTimeval(time1, tobj1);
-    if (obj_is_member_of(time2, C_Time)) {
+    if (obj_is_instance_of(time2, cTime)) {
+	double f;
+
 	GetTimeval(time2, tobj2);
-	sec = tobj1->tv.tv_sec - tobj2->tv.tv_sec;
-	usec = tobj1->tv.tv_usec - tobj2->tv.tv_usec;
-	if (usec < 0) {
-	    sec--;
-	    usec += 1000000;
-	}
+	f = tobj1->tv.tv_sec - tobj2->tv.tv_sec;
+
+	f += (tobj1->tv.tv_usec - tobj2->tv.tv_usec)*1e-6;
+
+	return float_new(f);
+    }
+    else if (TYPE(time2) == T_FLOAT) {
+	sec = tobj1->tv.tv_sec - (int)RFLOAT(time2)->value;
+	usec = tobj1->tv.tv_usec - (RFLOAT(time2)->value - (double)sec)*1e6;
     }
     else {
 	sec = tobj1->tv.tv_sec - NUM2INT(time2);
 	usec = tobj1->tv.tv_usec;
     }
+
+    if (usec < 0) {		/* usec underflow */
+	sec--;
+	usec += 1000000;
+    }
     return time_new(sec, usec);
 }
 
 static VALUE
-Ftime_sec(time)
+time_sec(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_sec);
 }
 
 static VALUE
-Ftime_min(time)
+time_min(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_min);
 }
 
 static VALUE
-Ftime_hour(time)
+time_hour(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_hour);
 }
 
 static VALUE
-Ftime_mday(time)
+time_mday(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_mday);
 }
 
 static VALUE
-Ftime_mon(time)
+time_mon(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_mon);
 }
 
 static VALUE
-Ftime_year(time)
+time_year(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_year);
 }
 
 static VALUE
-Ftime_wday(time)
+time_wday(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_wday);
 }
 
 static VALUE
-Ftime_yday(time)
+time_yday(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_yday);
 }
 
 static VALUE
-Ftime_isdst(time)
+time_isdst(time)
     VALUE time;
 {
     struct time_object *tobj;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     return INT2FIX(tobj->tm.tm_isdst);
 }
 
 static VALUE
-Ftime_zone(time)
+time_zone(time)
     VALUE time;
 {
     struct time_object *tobj;
@@ -428,7 +610,7 @@ Ftime_zone(time)
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
 
     len = strftime(buf, 10, "%Z", &(tobj->tm));
@@ -436,17 +618,15 @@ Ftime_zone(time)
 }
 
 static VALUE
-Ftime_to_a(time)
+time_to_a(time)
     VALUE time;
 {
     struct time_object *tobj;
-    struct tm *tm;
-    char buf[10];
     VALUE ary;
 
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     ary = ary_new3(9,
 		   INT2FIX(tobj->tm.tm_sec),
@@ -462,7 +642,7 @@ Ftime_to_a(time)
 }
 
 static VALUE
-Ftime_strftime(time, format)
+time_strftime(time, format)
     VALUE time, format;
 {
     struct time_object *tobj;
@@ -472,23 +652,21 @@ Ftime_strftime(time, format)
     Check_Type(format, T_STRING);
     GetTimeval(time, tobj);
     if (tobj->tm_got == 0) {
-	Ftime_localtime(time);
+	time_localtime(time);
     }
     if (strlen(RSTRING(format)->ptr) < RSTRING(format)->len) {
 	/* Ruby string contains \0. */
 	VALUE str;
-	int l, total = 0;
+	int l;
 	char *p = RSTRING(format)->ptr, *pe = p + RSTRING(format)->len;
 
-	GC_LINK;
-	GC_PRO3(str, str_new(0, 0));
+	str = str_new(0, 0);
 	while (p < pe) {
 	    len = strftime(buf, 100, p, &(tobj->tm));
 	    str_cat(str, buf, len);
 	    l = strlen(p);
 	    p += l + 1;
 	}
-	GC_UNLINK;
 	return str;
     }
     len = strftime(buf, 100, RSTRING(format)->ptr, &(tobj->tm));
@@ -496,67 +674,89 @@ Ftime_strftime(time, format)
 }
 
 static VALUE
-Ftime_times(obj)
+time_s_times(obj)
     VALUE obj;
 {
+#ifdef HAVE_TIMES
+#ifndef HZ
+#define HZ 60 /* Universal constant :-) */
+#endif /* HZ */
     struct tms buf;
-    VALUE t1, t2, t3, t4, tm;
 
-    if (times(&buf) == -1) rb_sys_fail(Qnil);
-    GC_LINK;
-    GC_PRO3(t1, float_new((double)buf.tms_utime / 60.0));
-    GC_PRO3(t2, float_new((double)buf.tms_stime / 60.0));
-    GC_PRO3(t3, float_new((double)buf.tms_cutime / 60.0));
-    GC_PRO3(t4, float_new((double)buf.tms_cstime / 60.0));
+    if (times(&buf) == -1) rb_sys_fail(0);
+    return struct_new(S_Tms,
+		      float_new((double)buf.tms_utime / HZ),
+		      float_new((double)buf.tms_stime / HZ),
+		      float_new((double)buf.tms_cutime / HZ),
+		      float_new((double)buf.tms_cstime / HZ));
+#else
+#ifdef NT
+    FILETIME create, exit, kernel, user;
+    HANDLE hProc;
 
-    tm = struct_new("tms",
-		    "utime", t1, "stime", t2,
-		    "cutime", t3, "cstime", t4,
-		    Qnil);
-    GC_UNLINK;
-
-    return tm;
+    hProc = GetCurrentProcess();
+    GetProcessTimes(hProc,&create, &exit, &kernel, &user);
+    return struct_new(S_Tms,
+      float_new((double)(kernel.dwHighDateTime*2e32+kernel.dwLowDateTime)/2e6),
+      float_new((double)(user.dwHighDateTime*2e32+user.dwLowDateTime)/2e6),
+      float_new((double)0),
+      float_new((double)0));
+#else
+    rb_notimplement();
+#endif
+#endif
 }
 
+void
 Init_Time()
 {
-    C_Time = rb_define_class("Time", C_Object);
-    rb_include_module(C_Time, M_Comparable);
+    cTime = rb_define_class("Time", cObject);
+    rb_include_module(cTime, mComparable);
 
-    rb_define_single_method(C_Time, "now", Ftime_now, 0);
-    rb_define_single_method(C_Time, "new", Ftime_now, 0);
-    rb_define_single_method(C_Time, "at", Ftime_at, 1);
+    rb_define_singleton_method(cTime, "now", time_s_now, 0);
+    rb_define_singleton_method(cTime, "new", time_s_now, 0);
+    rb_define_singleton_method(cTime, "at", time_s_at, 1);
+    rb_define_singleton_method(cTime, "gm", time_s_timegm, -1);
+    rb_define_singleton_method(cTime, "local", time_s_timelocal, -1);
+    rb_define_singleton_method(cTime, "mktime", time_s_timelocal, -1);
 
-    rb_define_single_method(C_Time, "times", Ftime_times, 0);
+    rb_define_singleton_method(cTime, "times", time_s_times, 0);
 
-    rb_define_method(C_Time, "to_i", Ftime_to_i, 0);
-    rb_define_method(C_Time, "<=>", Ftime_cmp, 1);
-    rb_define_method(C_Time, "hash", Ftime_hash, 0);
+    rb_define_method(cTime, "to_i", time_to_i, 0);
+    rb_define_method(cTime, "to_f", time_to_f, 0);
+    rb_define_method(cTime, "<=>", time_cmp, 1);
+    rb_define_method(cTime, "hash", time_hash, 0);
 
-    rb_define_method(C_Time, "localtime", Ftime_localtime, 0);
-    rb_define_method(C_Time, "gmtime", Ftime_gmtime, 0);
-    rb_define_method(C_Time, "ctime", Ftime_asctime, 0);
-    rb_define_method(C_Time, "asctime", Ftime_asctime, 0);
-    rb_define_method(C_Time, "to_s", Ftime_asctime, 0);
-    rb_define_method(C_Time, "_inspect", Ftime_asctime, 0);
-    rb_define_method(C_Time, "to_a", Ftime_to_a, 0);
-    rb_define_method(C_Time, "coerce", Ftime_coerce, 1);
+    rb_define_method(cTime, "localtime", time_localtime, 0);
+    rb_define_method(cTime, "gmtime", time_gmtime, 0);
+    rb_define_method(cTime, "ctime", time_asctime, 0);
+    rb_define_method(cTime, "asctime", time_asctime, 0);
+    rb_define_method(cTime, "to_s", time_asctime, 0);
+    rb_define_method(cTime, "inspect", time_asctime, 0);
+    rb_define_method(cTime, "to_a", time_to_a, 0);
+    rb_define_method(cTime, "coerce", time_coerce, 1);
 
-    rb_define_method(C_Time, "+", Ftime_plus, 1);
-    rb_define_method(C_Time, "-", Ftime_minus, 1);
+    rb_define_method(cTime, "+", time_plus, 1);
+    rb_define_method(cTime, "-", time_minus, 1);
 
-    rb_define_method(C_Time, "sec", Ftime_sec, 0);
-    rb_define_method(C_Time, "min", Ftime_min, 0);
-    rb_define_method(C_Time, "hour", Ftime_hour, 0);
-    rb_define_method(C_Time, "mday", Ftime_mday, 0);
-    rb_define_method(C_Time, "year", Ftime_year, 0);
-    rb_define_method(C_Time, "wday", Ftime_wday, 0);
-    rb_define_method(C_Time, "yday", Ftime_yday, 0);
-    rb_define_method(C_Time, "isdst", Ftime_isdst, 0);
+    rb_define_method(cTime, "sec", time_sec, 0);
+    rb_define_method(cTime, "min", time_min, 0);
+    rb_define_method(cTime, "hour", time_hour, 0);
+    rb_define_method(cTime, "mday", time_mday, 0);
+    rb_define_method(cTime, "mon", time_mon, 0);
+    rb_define_method(cTime, "year", time_year, 0);
+    rb_define_method(cTime, "wday", time_wday, 0);
+    rb_define_method(cTime, "yday", time_yday, 0);
+    rb_define_method(cTime, "isdst", time_isdst, 0);
+    rb_define_method(cTime, "zone", time_zone, 0);
 
-    rb_define_method(C_Time, "tv_sec", Ftime_to_i, 0);
-    rb_define_method(C_Time, "tv_usec", Ftime_usec, 0);
-    rb_define_method(C_Time, "usec", Ftime_usec, 0);
+    rb_define_method(cTime, "tv_sec", time_to_i, 0);
+    rb_define_method(cTime, "tv_usec", time_usec, 0);
+    rb_define_method(cTime, "usec", time_usec, 0);
 
-    rb_define_method(C_Time, "strftime", Ftime_strftime, 1);
+    rb_define_method(cTime, "strftime", time_strftime, 1);
+
+#if defined(HAVE_TIMES) || defined(NT)
+    S_Tms = struct_define("Tms", "utime", "stime", "cutime", "cstime", 0);
+#endif
 }

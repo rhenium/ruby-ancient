@@ -2,39 +2,48 @@
 
   env.h -
 
-  $Author$
-  $Revision$
-  $Date$
+  $Author: matz $
+  $Revision: 1.8 $
+  $Date: 1996/12/25 10:42:30 $
   created at: Mon Jul 11 11:53:03 JST 1994
 
 ************************************************/
 #ifndef ENV_H
 #define ENV_H
 
-extern struct ENVIRON {
-    VALUE self;
+extern struct FRAME {
     int argc;
     VALUE *argv;
-    struct RClass *current_module;
+    ID last_func;
     struct RClass *last_class;
+    VALUE cbase;
+    struct FRAME *prev;
     char *file;
     int line;
-    ID last_func;
+    int iter;
+} *the_frame;
+
+extern struct SCOPE {
+    struct RBasic super;
     ID *local_tbl;
     VALUE *local_vars;
-    int in_eval;
-    struct BLOCK *block;
-    int iterator;
-    int flags;
-    struct ENVIRON *prev;
-} *the_env;
+    int flag;
+} *the_scope;
 
-#define ITERATOR_P() (the_env->iterator > 0 && the_env->iterator < 3)
-#define Qself the_env->self
-#define the_class the_env->current_module
+#define SCOPE_ALLOCA  0
+#define SCOPE_MALLOC  1
+#define SCOPE_NOSTACK 2
 
-#define DURING_ITERATE  1
-#define DURING_RESQUE   2
-#define DURING_CALL     4
+extern int rb_in_eval;
+
+extern struct RClass *the_class;
+
+struct RVarmap {
+    struct RBasic super;
+    ID id;
+    VALUE val;
+    struct RVarmap *next;
+};
+extern struct RVarmap *the_dyna_vars;
 
 #endif /* ENV_H */

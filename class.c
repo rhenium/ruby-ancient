@@ -3,134 +3,194 @@
   class.c -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:49 $
+  $Date: 1996/12/25 08:54:44 $
   created at: Tue Aug 10 15:05:44 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1995 Yukihiro Matsumoto
 
 ************************************************/
 
 #include "ruby.h"
-#include "env.h"
 #include "node.h"
 #include "st.h"
 
 struct st_table *new_idhash();
+extern st_table *rb_class_tbl;
 
-extern VALUE C_Class;
-extern VALUE C_Module;
-extern VALUE C_Method;
+extern VALUE cClass;
+extern VALUE cModule;
 
 VALUE
 class_new(super)
     struct RClass *super;
 {
     NEWOBJ(cls, struct RClass);
-    OBJSETUP(cls, C_Class, T_CLASS);
+    OBJSETUP(cls, cClass, T_CLASS);
 
     cls->super = super;
     cls->m_tbl = new_idhash();
-    cls->c_tbl = Qnil;
 
     return (VALUE)cls;
 }
 
 VALUE
-single_class_new(super)
+singleton_class_new(super)
     struct RClass *super;
 {
     struct RClass *cls = (struct RClass*)class_new(super);
 
-    FL_SET(cls, FL_SINGLE);
+    FL_SET(cls, FL_SINGLETON);
+
+    return (VALUE)cls;
+}
+
+static int
+clone_method(mid, body, tbl)
+    ID mid;
+    NODE *body;
+    st_table *tbl;
+{
+    st_insert(tbl, mid, NEW_METHOD(body->nd_body, body->nd_noex));
+    return ST_CONTINUE;
+}
+
+VALUE
+singleton_class_clone(class)
+    struct RClass *class;
+{
+    if (!FL_TEST(class, FL_SINGLETON))
+	return (VALUE)class;
+    else {
+	/* copy singleton(unnamed) class */
+	NEWOBJ(clone, struct RClass);
+	CLONESETUP(clone, class);
+
+	clone->super = class->super;
+	clone->m_tbl = new_idhash();
+	st_foreach(class->m_tbl, clone_method, clone->m_tbl);
+	FL_SET(clone, FL_SINGLETON);
+	return (VALUE)clone;
+    }
+}
+
+VALUE
+rb_define_class_id(id, super)
+    ID id;
+    struct RBasic *super;
+{
+    struct RClass *cls;
+
+    if (!super) super = (struct RBasic*)cClass;
+    cls = (struct RClass*)class_new(super);
+    rb_name_class(cls, id);
+    /* make metaclass */
+    RBASIC(cls)->class = singleton_class_new(super->class);
 
     return (VALUE)cls;
 }
 
 VALUE
-single_class_clone(class)
-    struct RClass *class;
-{
-    if (!FL_TEST(class, FL_SINGLE))
-	return (VALUE)class;
-    else {
-	/* copy single(unnamed) class */
-	NEWOBJ(cls, struct RClass);
-	CLONESETUP(cls, class);
-
-	cls->super = class->super;
-	cls->m_tbl = st_copy(class->m_tbl);
-	cls->c_tbl = Qnil;
-	FL_SET(cls, FL_SINGLE);
-	return (VALUE)cls;
-    }
-}
-
-VALUE 
-rb_define_class_id(id, super)
-    ID id;
-    struct RBasic *super;
-{
-    struct RClass *cls = (struct RClass*)class_new(super);
-
-    rb_name_class(cls, id);
-
-    /* make metaclass */
-    RBASIC(cls)->class = single_class_new(super?super->class:C_Class);
-    literalize(RBASIC(cls)->class);
-
-    return (VALUE)cls;
-}
-
-VALUE 
 rb_define_class(name, super)
     char *name;
     VALUE super;
 {
-    return rb_define_class_id(rb_intern(name), super);
+    VALUE class;
+    ID id;
+
+    id = rb_intern(name);
+    class = rb_define_class_id(id, super);
+    st_add_direct(rb_class_tbl, id, class);
+
+    return class;
+}
+
+VALUE
+rb_define_class_under(under, name, super)
+    VALUE under;
+    char *name;
+    VALUE super;
+{
+    VALUE class;
+    ID id;
+
+    id = rb_intern(name);
+    class = rb_define_class_id(id, super);
+    rb_const_set(under, id, class);
+    rb_set_class_path(class, under, name);
+
+    return class;
 }
 
 VALUE
 module_new()
 {
     NEWOBJ(mdl, struct RClass);
-    OBJSETUP(mdl, C_Module, T_MODULE);
+    OBJSETUP(mdl, cModule, T_MODULE);
 
-    mdl->super = Qnil;
+    mdl->super = 0;
     mdl->m_tbl = new_idhash();
-    mdl->c_tbl = Qnil;
 
     return (VALUE)mdl;
 }
 
-VALUE 
+VALUE
 rb_define_module_id(id)
     ID id;
 {
+    extern st_table *rb_class_tbl;
     struct RClass *mdl = (struct RClass*)module_new();
 
     rb_name_class(mdl, id);
+
     return (VALUE)mdl;
 }
 
-VALUE 
+VALUE
 rb_define_module(name)
     char *name;
 {
-    return rb_define_module_id(rb_intern(name));
+    VALUE module;
+    ID id;
+
+    id = rb_intern(name);
+    module = rb_define_module_id(id);
+    st_add_direct(rb_class_tbl, id, module);
+
+    return module;
+}
+
+VALUE
+rb_define_module_under(under, name)
+    VALUE under;
+    char *name;
+{
+    VALUE module;
+    ID id;
+
+    id = rb_intern(name);
+    module = rb_define_module_id(id);
+    rb_const_set(under, id, module);
+    rb_set_class_path(module, under, name);
+
+    return module;
 }
 
 static struct RClass *
 include_class_new(module, super)
     struct RClass *module, *super;
 {
-    struct RClass *p;
-
     NEWOBJ(cls, struct RClass);
-    OBJSETUP(cls, C_Class, T_ICLASS);
+    OBJSETUP(cls, cClass, T_ICLASS);
 
     cls->m_tbl = module->m_tbl;
-    cls->c_tbl = module->c_tbl;
+    cls->iv_tbl = module->iv_tbl;
     cls->super = super;
+    if (TYPE(module) == T_ICLASS) {
+	RBASIC(cls)->class = RBASIC(module)->class;
+    }
+    else {
+	RBASIC(cls)->class = (VALUE)module;
+    }
 
     return cls;
 }
@@ -141,51 +201,44 @@ rb_include_module(class, module)
 {
     struct RClass *p;
 
-    Check_Type(module, T_MODULE);
+    if (NIL_P(module)) return;
 
+    switch (TYPE(module)) {
+      case T_MODULE:
+      case T_CLASS:
+	break;
+      default:
+	Check_Type(module, T_MODULE);
+    }
+
+    if (class == module) return;
+    rb_clear_cache();
+ 
     while (module) {
-	/* ignore if module included already in superclasses */
+	/* ignore if the module included already in superclasses */
 	for (p = class->super; p; p = p->super) {
 	    if (BUILTIN_TYPE(p) == T_ICLASS && p->m_tbl == module->m_tbl)
-		goto ignore_module;
+		return;
+	}
+
+	if (verbose) {
+	    rb_const_check(class, module);
 	}
 
 	class->super = include_class_new(module, class->super);
 	class = class->super;
-      ignore_module:
 	module = module->super;
     }
-    rb_clear_cache2(class);
 }
 
 void
-rb_add_method(class, mid, node, scope)
+rb_define_method_id(class, name, func, argc)
     struct RClass *class;
-    ID mid;
-    NODE *node;
-    enum mth_scope scope;
+    ID name;
+    VALUE (*func)();
+    int argc;
 {
-    struct RMethod *body;
-    NEWOBJ(mth, struct RMethod);
-    OBJSETUP(mth, C_Method, T_METHOD);
-
-    if (class == Qnil) class = (struct RClass*)C_Object;
-    if (st_lookup(class->m_tbl, mid, &body)) {
-	if (verbose) {
-	    Warning("redefine %s", rb_id2name(mid));
-	}
-	unliteralize(body);
-	rb_clear_cache(body);
-    }
-    mth->node = node;
-    if (BUILTIN_TYPE(class) == T_MODULE)
-	mth->origin = Qnil;
-    else
-	mth->origin = class;
-    mth->id = mid;
-    mth->scope = scope;
-    literalize(mth);
-    st_insert(class->m_tbl, mid, mth);
+    rb_add_method(class, name, NEW_CFUNC(func, argc), NOEX_PUBLIC);
 }
 
 void
@@ -195,21 +248,7 @@ rb_define_method(class, name, func, argc)
     VALUE (*func)();
     int argc;
 {
-    NODE *temp = NEW_CFUNC(func, argc);
-
-    rb_add_method(class, rb_intern(name), temp, MTH_METHOD);
-}
-
-void
-rb_define_func(class, name, func, argc)
-    struct RClass *class;
-    char *name;
-    VALUE (*func)();
-    int argc;
-{
-    NODE *temp = NEW_CFUNC(func, argc);
-
-    rb_add_method(class, rb_intern(name), temp, MTH_FUNC);
+    rb_add_method(class, rb_intern(name), NEW_CFUNC(func, argc), NOEX_PUBLIC);
 }
 
 void
@@ -217,49 +256,48 @@ rb_undef_method(class, name)
     struct RClass *class;
     char *name;
 {
-    rb_add_method(class, rb_intern(name), Qnil, MTH_UNDEF);
-}
-
-VALUE
-rb_single_class(obj)
-    struct RBasic *obj;
-{
-    switch (TYPE(obj)) {
-      case T_OBJECT:
-      case T_CLASS:
-      case T_MODULE:
-      case T_STRUCT:
-	break;
-      default:
-	Fail("can't define single method for built-in classes");
-	break;
-    }
-
-    if (FL_TEST(obj->class, FL_SINGLE)) {
-	return (VALUE)obj->class;
-    }
-    return obj->class = single_class_new(obj->class);
+    rb_add_method(class, rb_intern(name), 0, NOEX_PUBLIC);
 }
 
 void
-rb_define_single_method(obj, name, func, argc)
-    VALUE obj;
-    char *name;
-    VALUE (*func)();
-    int argc;
-{
-    rb_define_method(rb_single_class(obj), name, func, argc, MTH_METHOD);
-}
-
-void
-rb_define_mfunc(class, name, func, argc)
+rb_define_private_method(class, name, func, argc)
     struct RClass *class;
     char *name;
     VALUE (*func)();
     int argc;
 {
-    rb_define_func(class, name, func, argc);
-    rb_define_single_method(class, name, func, argc);
+    rb_add_method(class, rb_intern(name), NEW_CFUNC(func, argc), NOEX_PRIVATE);
+}
+
+VALUE
+rb_singleton_class(obj)
+    struct RBasic *obj;
+{
+    if (FL_TEST(obj->class, FL_SINGLETON)) {
+	return (VALUE)obj->class;
+    }
+    return obj->class = singleton_class_new(obj->class);
+}
+
+void
+rb_define_singleton_method(obj, name, func, argc)
+    VALUE obj;
+    char *name;
+    VALUE (*func)();
+    int argc;
+{
+    rb_define_method(rb_singleton_class(obj), name, func, argc);
+}
+
+void
+rb_define_module_function(module, name, func, argc)
+    VALUE module;
+    char *name;
+    VALUE (*func)();
+    int argc;
+{
+    rb_define_private_method(module, name, func, argc);
+    rb_define_singleton_method(module, name, func, argc);
 }
 
 void
@@ -271,75 +309,60 @@ rb_define_alias(class, name1, name2)
 }
 
 void
-rb_define_attr(class, name, pub)
+rb_define_attr(class, id, pub)
     struct RClass *class;
-    char *name;
+    ID id;
     int pub;
 {
+    char *name;
     char *buf;
     ID attr, attreq, attriv;
 
+    name = rb_id2name(id);
     attr = rb_intern(name);
-    buf = (char*)alloca(strlen(name) + 2);
+    buf = ALLOCA_N(char,strlen(name)+2);
     sprintf(buf, "%s=", name);
     attreq = rb_intern(buf);
     sprintf(buf, "@%s", name);
     attriv = rb_intern(buf);
-    if (rb_get_method_body(class, attr, 0, MTH_METHOD) == Qnil) {
-	rb_add_method(class, attr, NEW_IVAR(attriv), MTH_METHOD);
+    if (!rb_method_boundp(class, attr)) {
+	rb_add_method(class, attr, NEW_IVAR(attriv), 0);
     }
-    if (pub && rb_get_method_body(class, attreq, 0, MTH_METHOD) == Qnil) {
-	rb_add_method(class, attreq, NEW_ATTRSET(attriv), MTH_METHOD);
+    if (pub && !rb_method_boundp(class, attreq)) {
+	rb_add_method(class, attreq, NEW_ATTRSET(attriv), 0);
     }
-}
-
-void
-rb_define_single_attr(obj, name, pub)
-    VALUE obj;
-    char *name;
-    int pub;
-{
-    rb_define_attr(rb_single_class(obj), name, pub);
 }
 
 #include <varargs.h>
 #include <ctype.h>
 
 int
-rb_scan_args(args, fmt, va_alist)
-    VALUE args;
+rb_scan_args(argc, argv, fmt, va_alist)
+    int argc;
+    VALUE *argv;
     char *fmt;
     va_dcl
 {
-    int n, i, len;
+    int n, i;
     char *p = fmt;
     VALUE *var;
     va_list vargs;
-
-    if (NIL_P(args)) {
-	len = 0;
-    }
-    else {
-	Check_Type(args, T_ARRAY);
-	len = RARRAY(args)->len;
-    }
 
     va_start(vargs);
 
     if (*p == '*') {
 	var = va_arg(vargs, VALUE*);
-	*var = args;
-	return len;
+	*var = ary_new4(argc, argv);
+	return argc;
     }
 
     if (isdigit(*p)) {
 	n = *p - '0';
-	if (n > len)
-	    Fail("Wrong number of arguments for %s",
-		 rb_id2name(the_env->last_func));
+	if (n > argc)
+	    ArgError("Wrong # of arguments (%d for %d)", argc, n);
 	for (i=0; i<n; i++) {
 	    var = va_arg(vargs, VALUE*);
-	    *var = ary_entry(args, i);
+	    *var = argv[i];
 	}
 	p++;
     }
@@ -351,8 +374,8 @@ rb_scan_args(args, fmt, va_alist)
 	n = i + *p - '0';
 	for (; i<n; i++) {
 	    var = va_arg(vargs, VALUE*);
-	    if (len > i) {
-		*var = ary_entry(args, i);
+	    if (argc > i) {
+		*var = argv[i];
 	    }
 	    else {
 		*var = Qnil;
@@ -363,16 +386,16 @@ rb_scan_args(args, fmt, va_alist)
 
     if(*p == '*') {
 	var = va_arg(vargs, VALUE*);
-	if (len > i) {
-	    *var = ary_new4(RARRAY(args)->len-i, RARRAY(args)->ptr+i);
+	if (argc > i) {
+	    *var = ary_new4(argc-i, argv+i);
 	}
 	else {
 	    *var = ary_new();
 	}
     }
     else if (*p == '\0') {
-	if (len > i) {
-	    Fail("Wrong # of arguments(%d for %d)", len, i);
+	if (argc > i) {
+	    ArgError("Wrong # of arguments(%d for %d)", argc, i);
 	}
     }
     else {
@@ -380,8 +403,9 @@ rb_scan_args(args, fmt, va_alist)
     }
 
     va_end(vargs);
-    return len;
+    return argc;
 
   error:
-    Fail("bad scan arg format: %s", fmt);
+    Fatal("bad scan arg format: %s", fmt);
+    return 0;
 }

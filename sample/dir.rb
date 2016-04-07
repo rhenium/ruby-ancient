@@ -1,9 +1,10 @@
+# directory access
+# list all files but .*/*~/*.o
 dirp = Dir.open(".")
-dirp.rewind
 for f in dirp
+  $_ = f
   if (~/^\./ || ~/~$/ || ~/\.o/)
-  else
-    print(f, "\n")
+    print f, "\n"
   end
 end
 dirp.close

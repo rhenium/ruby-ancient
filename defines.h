@@ -3,7 +3,7 @@
   defines.h -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:49 $
+  $Date: 1996/12/25 10:42:25 $
   created at: Wed May 18 00:21:44 JST 1994
 
 ************************************************/
@@ -12,25 +12,25 @@
 
 #define RUBY
 
-/* #include "config.h" */
+/* define EUC/SJIS for default kanji-code */
+#define EUC
+#undef SJIS
 
-/* define USE_DLN to load object file(.o). */
-#ifdef HAVE_A_OUT_H
+#ifdef NeXT
+#define S_IXUSR _S_IXUSR        /* execute/search permission, owner */
+#define S_IXGRP 0000010         /* execute/search permission, group */
+#define S_IXOTH 0000001         /* execute/search permission, other */
+#define S_ISREG(mode)   (((mode) & (_S_IFMT)) == (_S_IFREG))
+#endif /* NeXT */
 
-#undef  USE_DLN
-#ifdef USE_DLN
-#define LIBC_NAME "libc.a"
-#define DLN_DEFAULT_PATH "/lib:/usr/lib:."
+#ifdef NT
+#include "missing/nt.h"
 #endif
 
-#endif
-
-/* define USE_DBM to use dbm class. */
-#define USE_DBM
-
-#ifdef HAVE_SYSCALL_H
-/* define SAFE_SIGHANDLE to override syscall for trap. */
-#define SAFE_SIGHANDLE
+#ifdef sparc
+#define FLUSH_REGISTER_WINDOWS asm("ta 3")
+#else
+#define FLUSH_REGISTER_WINDOWS /* empty */
 #endif
 
 #endif

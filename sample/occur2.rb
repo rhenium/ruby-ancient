@@ -1,9 +1,11 @@
+# word occurrence listing
+# usege: ruby occur2.rb file..
 freq = {}
 while gets()
   for word in $_.split(/\W+/)
-    protect
+    begin
       freq[word] = freq[word] + 1
-    resque
+    rescue
       freq[word] = 1
     end
   end

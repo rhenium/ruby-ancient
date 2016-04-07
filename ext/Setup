@@ -1,0 +1,9 @@
+#option nodynamic
+
+#dbm
+#etc
+#kconv
+#marshal
+#md5
+#socket
+#tkutil

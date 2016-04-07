@@ -3,45 +3,43 @@
   math.c -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:50 $
+  $Date: 1996/12/25 09:28:03 $
   created at: Tue Jan 25 14:12:56 JST 1994
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
 #include "ruby.h"
 #include <math.h>
 
-VALUE M_Math;
+VALUE mMath;
 VALUE float_new();
+VALUE f_float();
 
 #define Need_Float(x) \
 if (FIXNUM_P(x)) {\
     (x) = (struct RFloat*)float_new((double)FIX2INT(x));\
 } else {\
-    Check_Type(x, T_FLOAT);\
+    (x) = (struct RFloat*)f_float(x, x);\
 }
 
 #define Need_Float2(x,y) {\
-    GC_LINK;\
-    GC_PRO(x);\
     Need_Float(x);\
     Need_Float(y);\
-    GC_UNLINK;\
 }
 
 static VALUE
-Fmath_atan2(obj, x, y)
+math_atan2(obj, x, y)
     VALUE obj;
     struct RFloat *x, *y;
 {
     Need_Float2(x, y);
-    return float_new(atan2(x->value, x->value));
+    return float_new(atan2(x->value, y->value));
 }
 
 static VALUE
-Fmath_cos(obj, x)
+math_cos(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
@@ -51,7 +49,7 @@ Fmath_cos(obj, x)
 }
 
 static VALUE
-Fmath_sin(obj, x)
+math_sin(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
@@ -61,7 +59,7 @@ Fmath_sin(obj, x)
 }
 
 static VALUE
-Fmath_tan(obj, x)
+math_tan(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
@@ -71,7 +69,7 @@ Fmath_tan(obj, x)
 }
 
 static VALUE
-Fmath_exp(obj, x)
+math_exp(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
@@ -80,7 +78,7 @@ Fmath_exp(obj, x)
 }
 
 static VALUE
-Fmath_log(obj, x)
+math_log(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
@@ -89,7 +87,7 @@ Fmath_log(obj, x)
 }
 
 static VALUE
-Fmath_log10(obj, x)
+math_log10(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
@@ -98,28 +96,40 @@ Fmath_log10(obj, x)
 }
 
 static VALUE
-Fmath_sqrt(obj, x)
+math_sqrt(obj, x)
     VALUE obj;
     struct RFloat *x;
 {
     Need_Float(x);
-    return float_new(log10(x->value));
 
-    if (x->value < 0.0) Fail("square root for negative number");
+    if (x->value < 0.0) ArgError("square root for negative number");
     return float_new(sqrt(x->value));
 }
 
+void
 Init_Math()
 {
-    M_Math = rb_define_module("Math");
+    mMath = rb_define_module("Math");
 
-    rb_define_mfunc(M_Math, "atan2", Fmath_atan2, 2);
-    rb_define_mfunc(M_Math, "cos", Fmath_cos, 1);
-    rb_define_mfunc(M_Math, "sin", Fmath_sin, 1);
-    rb_define_mfunc(M_Math, "tan", Fmath_tan, 1);
+#ifdef M_PI
+    rb_define_const(mMath, "PI", float_new(M_PI));
+#else
+    rb_define_const(mMath, "PI", float_new(atan(1.0)*4.0));
+#endif
 
-    rb_define_mfunc(M_Math, "exp", Fmath_exp, 1);
-    rb_define_mfunc(M_Math, "log", Fmath_log, 1);
-    rb_define_mfunc(M_Math, "log10", Fmath_log10, 1);
-    rb_define_mfunc(M_Math, "sqrt", Fmath_sqrt, 1);
+#ifdef M_E
+    rb_define_const(mMath, "E", float_new(M_E));
+#else
+    rb_define_const(mMath, "E", float_new(exp(1.0)));
+#endif
+
+    rb_define_module_function(mMath, "atan2", math_atan2, 2);
+    rb_define_module_function(mMath, "cos", math_cos, 1);
+    rb_define_module_function(mMath, "sin", math_sin, 1);
+    rb_define_module_function(mMath, "tan", math_tan, 1);
+
+    rb_define_module_function(mMath, "exp", math_exp, 1);
+    rb_define_module_function(mMath, "log", math_log, 1);
+    rb_define_module_function(mMath, "log10", math_log10, 1);
+    rb_define_module_function(mMath, "sqrt", math_sqrt, 1);
 }

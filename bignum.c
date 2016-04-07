@@ -3,16 +3,17 @@
   bignum.c -
 
   $Author: matz $
-  $Date: 1994/06/27 15:48:21 $
+  $Date: 1996/12/25 10:42:19 $
   created at: Fri Jun 10 00:48:55 JST 1994
 
 ************************************************/
 
 #include "ruby.h"
 #include <ctype.h>
+#include <math.h>
 
-extern VALUE C_Integer;
-VALUE C_Bignum;
+extern VALUE cInteger;
+VALUE cBignum;
 
 #define BDIGITS(x) RBIGNUM(x)->digits
 #define BITSPERDIG (sizeof(USHORT)*CHAR_BIT)
@@ -22,9 +23,6 @@ VALUE C_Bignum;
 #define BIGDN(x) ((x) >> BITSPERDIG)
 #define BIGLO(x) ((x) & (BIGRAD-1))
 
-#define MAX(a,b) ((a)>(b)?(a):(b))
-#define MIN(a,b) ((a)<(b)?(a):(b))
-
 static VALUE
 bignew_1(class, len, sign)
     VALUE class;
@@ -32,7 +30,7 @@ bignew_1(class, len, sign)
     char sign;
 {
     NEWOBJ(big, struct RBignum);
-    OBJSETUP(big, C_Bignum, T_BIGNUM);
+    OBJSETUP(big, cBignum, T_BIGNUM);
     big->sign = sign;
     big->len = len;
     BDIGITS(big) = ALLOC_N(USHORT, len);
@@ -40,24 +38,15 @@ bignew_1(class, len, sign)
     return (VALUE)big;
 }
 
-#define bignew(len,sign) bignew_1(C_Bignum,len,sign)
-
-static VALUE
-Fbig_new(class, y)
-    VALUE class;
-    struct RBignum *y;
-{
-    Check_Type(y, T_BIGNUM);
-    return bignew_1(class, y->len, y->sign);
-}
+#define bignew(len,sign) bignew_1(cBignum,len,sign)
 
 VALUE
-Fbig_clone(x)
+big_clone(x)
     struct RBignum *x;
 {
     VALUE z = bignew_1(CLASS_OF(x), x->len, x->sign);
 
-    bcopy(BDIGITS(x), BDIGITS(z), x->len*sizeof(USHORT));
+    MEMCPY(BDIGITS(z), BDIGITS(x), USHORT, x->len);
     return (VALUE)z;
 }
 
@@ -87,7 +76,10 @@ bignorm(x)
 
     while (len-- && !ds[len]) ;
     x->len = ++len;
-    if (len*sizeof(USHORT) <= sizeof(VALUE)) {
+
+    if (len*sizeof(USHORT) < sizeof(VALUE) ||
+	(len*sizeof(USHORT) == sizeof(VALUE) &&
+	 ds[sizeof(VALUE)/sizeof(USHORT)-1] <= 0x3fff)) {
 	long num = 0;
 	while (len--) {
 	    num = BIGUP(num) + ds[len];
@@ -135,7 +127,7 @@ int2big(n)
     }
     big = (struct RBignum*)uint2big(n);
     if (neg) {
-	big->sign = FALSE;
+	big->sign = 0;
     }
     return (VALUE)big;
 }
@@ -197,11 +189,20 @@ str2inum(str, base)
     }
 
     if (len <= (sizeof(VALUE)*CHAR_BIT)) {
-	int result = strtoul(str, Qnil, base);
+	UINT val = strtoul(str, 0, base);
 
-	if (!sign) result = -result;
-	if (FIXABLE(result)) return INT2FIX(result);
-	return int2big(result);
+	if (POSFIXABLE(val)) {
+	    if (sign) return INT2FIX(val);
+	    else {
+		int result = -(int)val;
+		return INT2FIX(result);
+	    }
+	}
+	else {
+	    VALUE big = uint2big(val);
+	    RBIGNUM(big)->sign = sign;
+	    return big;
+	}
     }
     len = (len/(sizeof(USHORT)*CHAR_BIT))+1;
 
@@ -261,7 +262,7 @@ big2str(x, base)
 	return fix2str(x, base);
     }
     i = x->len;
-    if (x->len == 0) return str_new2("0");
+    if (i == 0) return str_new2("0");
     if (base == 10) {
 	j = (sizeof(USHORT)/sizeof(char)*CHAR_BIT*i*241L)/800+2;
 	hbase = 10000;
@@ -279,13 +280,14 @@ big2str(x, base)
 	hbase = 020;
     }
     else {
+	j = 0;
+	hbase = 0;
 	Fail("bignum cannot treat base %d", base);
     }
 
-    GC_LINK;
-    GC_PRO3(t, Fbig_clone(x));
+    t = big_clone(x);
     ds = BDIGITS(t);
-    GC_PRO3(ss, str_new(0, j));
+    ss = str_new(0, j);
     s = RSTRING(ss)->ptr;
 
     s[0] = x->sign ? '+' : '-';
@@ -310,12 +312,12 @@ big2str(x, base)
     RSTRING(ss)->len -= x->sign?j:j-1;
     memmove(x->sign?s:s+1, s+j, RSTRING(ss)->len);
     s[RSTRING(ss)->len] = '\0';
-    GC_UNLINK;
+
     return ss;
 }
 
 static VALUE
-Fbig_to_s(x)
+big_to_s(x)
     struct RBignum *x;
 {
     return big2str(x, 10);
@@ -330,7 +332,7 @@ big2int(x)
     USHORT *ds;
 
     if (len > sizeof(long)/sizeof(USHORT))
-	Fail("Bignum too big to convert into fixnum");
+	ArgError("Bignum too big to convert into fixnum");
     ds = BDIGITS(x);
     num = 0;
     while (len--) {
@@ -342,15 +344,10 @@ big2int(x)
 }
 
 VALUE
-Fbig_to_i(x)
+big_to_i(x)
     VALUE x;
 {
-    int v = big2int(x);
-
-    if (FIXABLE(v)) {
-	return INT2FIX(v);
-    }
-    return x;
+    return bignorm(x);
 }
 
 VALUE
@@ -363,20 +360,19 @@ dbl2big(d)
     VALUE z;
     double u = (d < 0)?-d:d;
 
-    while (0 != floor(u)) {
-	u /= BIGRAD;
+    while (0 != (long)u) {
+	u /= (double)(BIGRAD);
 	i++;
     }
-    GC_LINK;
-    GC_PRO3(z, bignew(i, d>=0));
+    z = bignew(i, d>=0);
     digits = BDIGITS(z);
     while (i--) {
 	u *= BIGRAD;
-	c = floor(u);
+	c = (long)u;
 	u -= c;
 	digits[i] = c;
     }
-    GC_UNLINK;
+
     return bignorm(z);
 }
 
@@ -388,25 +384,137 @@ big2dbl(x)
     UINT i = x->len;
     USHORT *ds = BDIGITS(x);
 
-    while (i--) d = ds[i] + BIGRAD*d;
+    while (i--) {
+	d = ds[i] + BIGRAD*d;
+    }
     if (!x->sign) d = -d;
     return d;
 }
 
 VALUE
-Fbig_to_f(x)
+big_to_f(x)
     VALUE x;
 {
     return float_new(big2dbl(x));
 }
 
 static VALUE
-Fbig_uminus(x)
+big_cmp(x, y)
+    struct RBignum *x, *y;
+{
+    int xlen = x->len;
+
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = (struct RBignum*)int2big(FIX2INT(y));
+	break;
+
+      case T_BIGNUM:
+	break;
+
+      default:
+	return num_coerce_bin(x, y);
+    }
+
+    if (x->sign > y->sign) return INT2FIX(1);
+    if (x->sign < y->sign) return INT2FIX(-1);
+    if (xlen < y->len)
+	return (x->sign) ? INT2FIX(-1) : INT2FIX(1);
+    if (xlen > y->len)
+	return (x->sign) ? INT2FIX(1) : INT2FIX(-1);
+
+    while(xlen-- && (BDIGITS(x)[xlen]==BDIGITS(y)[xlen]));
+    if (-1 == xlen) return INT2FIX(0);
+    return (BDIGITS(x)[xlen] > BDIGITS(y)[xlen]) ?
+	(x->sign ? INT2FIX(1) : INT2FIX(-1)) :
+	    (x->sign ? INT2FIX(-1) : INT2FIX(1));
+}
+
+static VALUE
+big_uminus(x)
     struct RBignum *x;
 {
-    VALUE z = Fbig_clone(x);
+    VALUE z = big_clone(x);
 
     RBIGNUM(z)->sign = !x->sign;
+
+    return bignorm(z);
+}
+
+static VALUE
+big_neg(x)
+    struct RBignum *x;
+{
+    VALUE z = big_clone(x);
+    UINT i = x->len;
+    USHORT *ds = BDIGITS(z);
+
+    if (!x->sign) big_2comp(z);
+    while (i--) ds[i] = ~ds[i];
+    if (x->sign) big_2comp(z);
+    RBIGNUM(z)->sign = !RBIGNUM(z)->sign;
+
+    return bignorm(z);
+}
+
+static VALUE
+bigsub(x, y)
+    struct RBignum *x, *y;
+{
+    struct RBignum *z = 0;
+    USHORT *zds;
+    long num;
+    UINT i;
+
+    i = x->len;
+    /* if x is larger than y, swap */
+    if (x->len < y->len) {
+	z = x; x = y; y = z;	/* swap x y */
+    }
+    else if (x->len == y->len) {
+	while (i > 0) {
+	    i--;
+	    if (BDIGITS(x)[i] > BDIGITS(y)[i]) {
+		break;
+	    }
+	    if (BDIGITS(x)[i] < BDIGITS(y)[i]) {
+		z = x; x = y; y = z;	/* swap x y */
+		break;
+	    }
+	}
+    }
+
+    z = (struct RBignum*)bignew(x->len, (z == 0)?1:0);
+    zds = BDIGITS(z);
+
+    i = x->len;
+    while (i--) zds[i] = BDIGITS(x)[i];
+
+    i = 0; num = 0;
+    do {
+	num += (long)zds[i] - BDIGITS(y)[i];
+	if (num < 0) {
+	    zds[i] = num + BIGRAD;
+	    num = -1;
+	}
+	else {
+	    zds[i] = BIGLO(num);
+	    num = 0;
+	}
+    } while (++i < y->len);
+    if (num) {
+	while (num && i < x->len) {
+	    num += zds[i];
+	    if (num < 0) {
+		zds[i++] = num + BIGRAD;
+		num = -1;
+	    }
+	    else {
+		zds[i++] = BIGLO(num);
+		num = 0;
+	    }
+	}
+    }
 
     return bignorm(z);
 }
@@ -421,7 +529,17 @@ bigadd(x, y, sign)
     long num;
     UINT i, len;
 
-    len = MAX(x->len, y->len) + 1;
+    if (x->sign == (y->sign ^ sign)) {
+	if (y->sign == sign) return bigsub(y, x);
+	return bigsub(x, y);
+    }
+
+    if (x->len > y->len) {
+	len = x->len + 1;
+    }
+    else {
+	len = y->len + 1;
+    }
     z = (struct RBignum*)bignew(len, sign==y->sign);
     zds = BDIGITS(z);
 
@@ -430,96 +548,68 @@ bigadd(x, y, sign)
     i = y->len;
     while (i--) zds[i] = BDIGITS(y)[i];
 
-    GC_LINK;
-    GC_PRO(z);
     i = 0; num = 0;
-    if (x->sign == z->sign) {
-	do {
-	    num += (long)zds[i] + BDIGITS(x)[i];
+    do {
+	num += (long)zds[i] + BDIGITS(x)[i];
+	zds[i++] = BIGLO(num);
+	    num = BIGDN(num);
+    } while (i < x->len);
+    if (num) {
+	while (i < y->len) {
+	    num += zds[i];
 	    zds[i++] = BIGLO(num);
 	    num = BIGDN(num);
-	} while (i < x->len);
-	if (num) {
-	    while (i < y->len) {
-		num += zds[i];
-		zds[i++] = BIGLO(num);
-		num = BIGDN(num);
-	    }
-	    BDIGITS(z)[i] = num;
 	}
+	BDIGITS(z)[i] = num;
     }
-    else {
-	do {
-	    num += (long)zds[i] - BDIGITS(x)[i];
-	    if (num < 0) {
-		zds[i] = num + BIGRAD;
-		num = -1;
-	    }
-	    else {
-		zds[i] = BIGLO(num);
-		num = 0;
-	    }
-	} while (++i < x->len);
-	if (num && x->len == y->len) {
-	    num = 1; i = 0;
-	    z->sign = 1;
-	    do {
-		num += (BIGRAD-1) - zds[i];
-		zds[i++] = BIGLO(num);
-		num = BIGDN(num);
-	    } while (i < y->len);
-	}
-	else while (i < y->len) {
-	    num += zds[i];
-	    if (num < 0) {
-		zds[i++] = num + BIGRAD;
-		num = -1;
-	    }
-	    else {
-		zds[i++] = BIGLO(num);
-		num = 0;
-	    }
-	}
-    }
-    GC_UNLINK;
+
     return bignorm(z);
 }
 
 VALUE
-Fbig_plus(x, y)
+big_plus(x, y)
     VALUE x, y;
 {
     VALUE z;
 
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = int2big(FIX2INT(y));
-    else {
-	Check_Type(x, T_BIGNUM);
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = int2big(FIX2INT(y));
+	/* fall through */
+      case T_BIGNUM:
+	return bigadd(x, y, 1);
+
+      case T_FLOAT:
+	return float_new(big2dbl(x) + RFLOAT(y)->value);
+
+      default:
+	return num_coerce_bin(x, y);
     }
-    z = bigadd(x, y, 1);
-    GC_UNLINK;
-    return z;
 }
 
 VALUE
-Fbig_minus(x, y)
+big_minus(x, y)
     VALUE x, y;
 {
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = int2big(FIX2INT(y));
-    else {
-	Check_Type(y, T_BIGNUM);
-    }
-    x = bigadd(x, y, 0);
-    GC_UNLINK;
+    VALUE cmp;
 
-    return x;
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = int2big(FIX2INT(y));
+	/* fall through */
+      case T_BIGNUM:
+	return bigadd(x, y, 0);
+
+      case T_FLOAT:
+	return float_new(big2dbl(x) - RFLOAT(y)->value);
+
+      default:
+	return num_coerce_bin(x, y);
+    }
 }
 
 VALUE
-Fbig_mul(x, y)
+big_mul(x, y)
     struct RBignum *x, *y;
 {
     UINT i = 0, j;
@@ -527,11 +617,20 @@ Fbig_mul(x, y)
     VALUE z;
     USHORT *zds;
 
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = (struct RBignum*)int2big(FIX2INT(y));
-    else {
-	Check_Type(y, T_BIGNUM);
+    if (FIXNUM_P(x)) x = (struct RBignum*)int2big(FIX2INT(x));
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = (struct RBignum*)int2big(FIX2INT(y));
+	break;
+
+      case T_BIGNUM:
+	break;
+
+      case T_FLOAT:
+	return float_new(big2dbl(x) * RFLOAT(y)->value);
+
+      default:
+	return num_coerce_bin(x, y);
     }
 
     j = x->len + y->len + 1;
@@ -552,7 +651,6 @@ Fbig_mul(x, y)
 	    }
 	}
     } while (++i < x->len);
-    GC_UNLINK;
 
     return bignorm(z);
 }
@@ -570,7 +668,7 @@ bigdivmod(x, y, div, mod)
     USHORT dd, q;
 
     yds = BDIGITS(y);
-    if (ny == 0 && yds[0] == 0) Fail("divided by 0");
+    if (ny == 0 && yds[0] == 0) num_zerodiv();
     if (nx < ny) {
 	if (div) *div = INT2FIX(0);
 	if (mod) *mod = bignorm(x);
@@ -579,8 +677,7 @@ bigdivmod(x, y, div, mod)
     xds = BDIGITS(x);
     if (ny == 1) {
 	dd = yds[0];
-	GC_LINK;
-	GC_PRO3(z, Fbig_clone(x));
+	z = big_clone(x);
 	zds = BDIGITS(z);
 	t2 = 0; i = nx;
 	while(i--) {
@@ -591,18 +688,16 @@ bigdivmod(x, y, div, mod)
 	if (div) *div = bignorm(z);
 	if (mod) {
 	    if (!y->sign) t2 = -t2;
-	    *mod = FIX2INT(t2);
+	    *mod = INT2FIX(t2);
 	}
-	GC_UNLINK;
 	return;
     }
-    GC_LINK;
-    GC_PRO3(z, bignew(nx==ny?nx+2:nx+1, x->sign==y->sign));
+    z = bignew(nx==ny?nx+2:nx+1, x->sign==y->sign);
     zds = BDIGITS(z);
     if (nx==ny) zds[nx+1] = 0;
     while (!yds[ny-1]) ny--;
-    if ((dd = BIGRAD/(yds[ny-1]+1)) != 1) {
-	GC_PRO3(y, (struct RBignum*)Fbig_clone(y));
+    if ((dd = BIGRAD/(int)(yds[ny-1]+1)) != 1) {
+	y = (struct RBignum*)big_clone(y);
 	tds = BDIGITS(y);
 	j = 0;
 	num = 0;
@@ -659,7 +754,7 @@ bigdivmod(x, y, div, mod)
 	zds[j] = q;
     } while (--j >= ny);
     if (div) {			/* move quotient down in z */
-	*div = Fbig_clone(z);
+	*div = big_clone(z);
 	zds = BDIGITS(*div);
 	j = (nx==ny ? nx+2 : nx+1) - ny;
 	for (i = 0;i < j;i++) zds[i] = zds[i+ny];
@@ -667,7 +762,7 @@ bigdivmod(x, y, div, mod)
 	*div = bignorm(*div);
     }
     if (mod) {			/* just normalize remainder */
-	*mod = Fbig_clone(z);
+	*mod = big_clone(z);
 	if (dd) {
 	    zds = BDIGITS(*mod);
 	    t2 = 0; i = ny;
@@ -681,85 +776,129 @@ bigdivmod(x, y, div, mod)
 	RBIGNUM(*mod)->sign = y->sign;
 	*mod = bignorm(*mod);
     }
-    GC_UNLINK;
 }
 
 static VALUE
-Fbig_div(x, y)
+big_div(x, y)
     VALUE x, y;
 {
     VALUE z;
 
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = int2big(FIX2INT(y));
-    else {
-	Check_Type(y, T_BIGNUM);
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = int2big(FIX2INT(y));
+	break;
+
+      case T_BIGNUM:
+	break;
+
+      case T_FLOAT:
+	return float_new(big2dbl(x) / RFLOAT(y)->value);
+
+      default:
+	return num_coerce_bin(x, y);
     }
-    bigdivmod(x, y, &z, Qnil);
-    GC_UNLINK;
+    bigdivmod(x, y, &z, 0);
+
     return z;
 }
 
 static VALUE
-Fbig_mod(x, y)
+big_mod(x, y)
     VALUE x, y;
 {
     VALUE z;
 
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = int2big(FIX2INT(y));
-    else {
-	Check_Type(y, T_BIGNUM);
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = int2big(FIX2INT(y));
+	break;
+
+      case T_BIGNUM:
+	break;
+
+      case T_FLOAT:
+	y = dbl2big(RFLOAT(y)->value);
+	break;
+
+      default:
+	return num_coerce_bin(x, y);
     }
-    bigdivmod(x, y, Qnil, &z);
-    GC_UNLINK;
+    bigdivmod(x, y, 0, &z);
+
     return z;
 }
 
 static VALUE
-Fbig_divmod(x, y)
+big_divmod(x, y)
     VALUE x, y;
 {
     VALUE div, mod;
 
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = int2big(FIX2INT(y));
-    else {
-	Check_Type(y, T_BIGNUM);
+    switch (TYPE(y)) {
+      case T_FIXNUM:
+	y = int2big(FIX2INT(y));
+	break;
+
+      case T_FLOAT:
+	y = dbl2big(RFLOAT(y)->value);
+	break;
+
+      case T_BIGNUM:
+	break;
+
+      default:
+	return num_coerce_bin(x, y);
     }
     bigdivmod(x, y, &div, &mod);
-    GC_UNLINK;
 
     return assoc_new(div, mod);;
 }
 
-static VALUE
-Fbig_pow(x, y)
+VALUE
+big_pow(x, y)
     VALUE x, y;
 {
-    extern double pow();
-    double d1, d2;
+    double d;
+    VALUE z;
+    
+    if (y == INT2FIX(0)) return INT2FIX(1);
+    switch (TYPE(y)) {
+      case T_FLOAT:
+	d = RFLOAT(y)->value;
+	break;
 
-    GC_LINK;
-    GC_PRO(y);
-    if (FIXNUM_P(y)) y = int2big(FIX2INT(y));
-    else {
-	Check_Type(y, T_BIGNUM);
+      case T_BIGNUM:
+	if (RBIGNUM(y)->sign) goto pos_big;
+	d = big2dbl(y);
+	break;
+
+      case T_FIXNUM:
+	if (FIX2INT(y) > 0) goto pos_big;
+	d = (double)FIX2INT(y);
+	break;
+
+      default:
+	return num_coerce_bin(x, y);
     }
+    return float_new(pow(big2dbl(x), d));
 
-    d1 = big2dbl(x);
-    d2 = big2dbl(y);
-    d1 = pow(d1, d2);
-    GC_UNLINK;
-
-    return dbl2big(d1);
+  pos_big:
+    z = x;
+    for (;;) {
+	y = rb_funcall(y, '-', 1, INT2FIX(1));
+	if (y == INT2FIX(0)) break;
+	while (rb_funcall(y, '%', 1, INT2FIX(2)) == INT2FIX(0)) {
+	    y = rb_funcall(y, '/', 1, INT2FIX(2));
+	    x = big_mul(x, x);
+	}
+	z = big_mul(z, x);
+    }
+    return z;
 }
 
 VALUE
-Fbig_and(x, y)
+big_and(x, y)
     struct RBignum *x, *y;
 {
     VALUE z;
@@ -774,14 +913,12 @@ Fbig_and(x, y)
 	Check_Type(y, T_BIGNUM);
     }
 
-    GC_LINK;
-    GC_PRO(y);
     if (!y->sign) {
-	y = (struct RBignum*)Fbig_clone(y);
+	y = (struct RBignum*)big_clone(y);
 	big_2comp(y);
     }
     if (!x->sign) {
-	GC_PRO3(x, (struct RBignum*)Fbig_clone(x));
+	x = (struct RBignum*)big_clone(x);
 	big_2comp(x);
     }
     if (x->len > y->len) {
@@ -808,12 +945,11 @@ Fbig_and(x, y)
 	zds[i] = sign?0:ds2[i];
     }
     if (!RBIGNUM(z)->sign) big_2comp(z);
-    GC_UNLINK;
     return bignorm(z);
 }
 
 VALUE
-Fbig_or(x, y)
+big_or(x, y)
     struct RBignum *x, *y;
 {
     VALUE z;
@@ -828,14 +964,12 @@ Fbig_or(x, y)
 	Check_Type(y, T_BIGNUM);
     }
 
-    GC_LINK;
-    GC_PRO(y);
     if (!y->sign) {
-	y = (struct RBignum*)Fbig_clone(y);
+	y = (struct RBignum*)big_clone(y);
 	big_2comp(y);
     }
     if (!x->sign) {
-	GC_PRO3(x, (struct RBignum*)Fbig_clone(x));
+	x = (struct RBignum*)big_clone(x);
 	big_2comp(x);
     }
     if (x->len > y->len) {
@@ -862,12 +996,12 @@ Fbig_or(x, y)
 	zds[i] = sign?ds2[i]:(BIGRAD-1);
     }
     if (!RBIGNUM(z)->sign) big_2comp(z);
-    GC_UNLINK;
+
     return bignorm(z);
 }
 
 VALUE
-Fbig_xor(x, y)
+big_xor(x, y)
     struct RBignum *x, *y;
 {
     VALUE z;
@@ -882,14 +1016,12 @@ Fbig_xor(x, y)
 	Check_Type(y, T_BIGNUM);
     }
 
-    GC_LINK;
-    GC_PRO(y);
     if (!y->sign) {
-	y = (struct RBignum*)Fbig_clone(y);
+	y = (struct RBignum*)big_clone(y);
 	big_2comp(y);
     }
     if (!x->sign) {
-	GC_PRO3(x, (struct RBignum*)Fbig_clone(x));
+	x = (struct RBignum*)big_clone(x);
 	big_2comp(x);
     }
     if (x->len > y->len) {
@@ -918,42 +1050,26 @@ Fbig_xor(x, y)
 	zds[i] = sign?ds2[i]:~ds2[i];
     }
     if (!RBIGNUM(z)->sign) big_2comp(z);
-    GC_UNLINK;
-    return bignorm(z);
-}
-
-static VALUE
-Fbig_neg(x)
-    struct RBignum *x;
-{
-    VALUE z = Fbig_clone(x);
-    UINT i = x->len;
-    USHORT *ds = BDIGITS(z);
-
-    if (!x->sign) big_2comp(z);
-    while (i--) ds[i] = ~ds[i];
-    if (x->sign) big_2comp(z);
-    RBIGNUM(z)->sign = !RBIGNUM(z)->sign;
 
     return bignorm(z);
 }
 
-static VALUE Fbig_rshift();
+static VALUE big_rshift();
 
 VALUE
-Fbig_lshift(x, y)
+big_lshift(x, y)
     struct RBignum *x;
     VALUE y;
 {
     USHORT *xds, *zds;
-    UINT shift = NUM2INT(y);
+    int shift = NUM2INT(y);
     UINT s1 = shift/(sizeof(USHORT)*CHAR_BIT);
     UINT s2 = shift%(sizeof(USHORT)*CHAR_BIT);
     VALUE z;
     unsigned long num = 0;
     UINT len, i;
 
-    if (shift < 0) return Fbig_rshift(x, INT2FIX(-shift));
+    if (shift < 0) return big_rshift(x, INT2FIX(-shift));
     xds = BDIGITS(x);
     len = x->len;
     z = bignew(len+s1+1, x->sign);
@@ -971,19 +1087,19 @@ Fbig_lshift(x, y)
 }
 
 static VALUE
-Fbig_rshift(x, y)
+big_rshift(x, y)
     struct RBignum *x;
     VALUE y;
 {
     USHORT *xds, *zds;
-    UINT shift = NUM2INT(y);
+    int shift = NUM2INT(y);
     UINT s1 = shift/(sizeof(USHORT)*CHAR_BIT);
     UINT s2 = shift%(sizeof(USHORT)*CHAR_BIT);
     VALUE z;
     unsigned long num = 0;
     UINT i = x->len, j;
 
-    if (shift < 0) return Fbig_lshift(x, INT2FIX(-shift));
+    if (shift < 0) return big_lshift(x, INT2FIX(-shift));
     if (s1 > x->len) {
 	if (x->sign)
 	    return INT2FIX(0);
@@ -1003,7 +1119,7 @@ Fbig_rshift(x, y)
 }
 
 static VALUE
-Fbig_aref(x, y)
+big_aref(x, y)
     struct RBignum *x;
     VALUE y;
 {
@@ -1017,7 +1133,7 @@ Fbig_aref(x, y)
 
     if (!x->sign) {
 	if (s1 >= x->len) return INT2FIX(1);
-	x = (struct RBignum*)Fbig_clone(x);
+	x = (struct RBignum*)big_clone(x);
 	big_2comp(x);
     }
     else {
@@ -1030,28 +1146,7 @@ Fbig_aref(x, y)
 }
 
 static VALUE
-Fbig_cmp(x, y)
-    struct RBignum *x, *y;
-{
-    int xlen = x->len;
-
-    Check_Type(x, T_BIGNUM);
-    if (x->sign > y->sign) return INT2FIX(1);
-    if (x->sign < y->sign) return INT2FIX(-1);
-    if (xlen < y->len)
-	return (x->sign) ? INT2FIX(-1) : INT2FIX(1);
-    if (xlen > y->len)
-	return (x->sign) ? INT2FIX(1) : INT2FIX(-1);
-
-    while(xlen-- && (BDIGITS(x)[xlen]==BDIGITS(y)[xlen]));
-    if (-1 == xlen) return INT2FIX(0);
-    return (BDIGITS(x)[xlen] < BDIGITS(y)[xlen]) ?
-	(x->sign ? INT2FIX(1) : INT2FIX(-1)) :
-	    (x->sign ? INT2FIX(-1) : INT2FIX(1));
-}
-
-static VALUE
-Fbig_hash(x)
+big_hash(x)
     struct RBignum *x;
 {
     int i, len, key;
@@ -1065,57 +1160,90 @@ Fbig_hash(x)
 }
 
 static VALUE
-Fbig_coerce(x, y)
+big_coerce(x, y)
     struct RBignum *x;
     VALUE y;
 {
     if (FIXNUM_P(y)) {
-	return int2big(FIX2INT(y));
+	return assoc_new(int2big(FIX2INT(y)), x);
     }
     else {
-	Fail("can't coerce %s to Bignum", rb_class2name(CLASS_OF(y)));
+	TypeError("can't coerce %s to Bignum", rb_class2name(CLASS_OF(y)));
     }
     /* not reached */
-    return Qnil;
 }
 
 static VALUE
-Fbig_abs(x)
+big_abs(x)
     struct RBignum *x;
 {
     if (!x->sign) {
-	x = (struct RBignum*)Fbig_clone(x);
+	x = (struct RBignum*)big_clone(x);
 	x->sign = 1;
     }
     return (VALUE)x;
 }
 
+/* !!!warnig!!!!
+   this is not really a random number!!
+*/
+
+VALUE
+big_rand(max)
+    struct RBignum *max;
+{
+    struct RBignum *v;
+    int len;
+
+    len = max->len;
+    v = RBIGNUM(bignew(len,1));
+    while (len--) {
+#ifdef HAVE_RANDOM
+	BDIGITS(v)[len] = random();
+#else
+	BDIGITS(v)[len] = rand();
+#endif
+    }
+
+    return big_mod(v, max);
+}
+
+static VALUE
+big_size(big)
+    struct RBignum *big;
+{
+    return INT2FIX(big->len*2);
+}
+
+void
 Init_Bignum()
 {
-    C_Bignum = rb_define_class("Bignum", C_Integer);
-    rb_define_single_method(C_Bignum, "new", Fbig_new, 1);
-    rb_define_method(C_Bignum, "clone", Fbig_clone, 0);
-    rb_define_method(C_Bignum, "to_s", Fbig_to_s, 0);
-    rb_define_method(C_Bignum, "coerce", Fbig_coerce, 1);
-    rb_define_method(C_Bignum, "-@", Fbig_uminus, 0);
-    rb_define_method(C_Bignum, "+", Fbig_plus, 1);
-    rb_define_method(C_Bignum, "-", Fbig_minus, 1);
-    rb_define_method(C_Bignum, "*", Fbig_mul, 1);
-    rb_define_method(C_Bignum, "/", Fbig_div, 1);
-    rb_define_method(C_Bignum, "%", Fbig_mod, 1);
-    rb_define_method(C_Bignum, "divmod", Fbig_divmod, 1);
-    rb_define_method(C_Bignum, "**", Fbig_pow, 1);
-    rb_define_method(C_Bignum, "&", Fbig_and, 1);
-    rb_define_method(C_Bignum, "|", Fbig_or, 1);
-    rb_define_method(C_Bignum, "^", Fbig_xor, 1);
-    rb_define_method(C_Bignum, "~", Fbig_neg, 0);
-    rb_define_method(C_Bignum, "<<", Fbig_lshift, 1);
-    rb_define_method(C_Bignum, ">>", Fbig_rshift, 1);
-    rb_define_method(C_Bignum, "[]", Fbig_aref, 1);
+    cBignum = rb_define_class("Bignum", cInteger);
 
-    rb_define_method(C_Bignum, "<=>", Fbig_cmp, 1);
-    rb_define_method(C_Bignum, "hash", Fbig_hash, 0);
-    rb_define_method(C_Bignum, "to_i", Fbig_to_i, 0);
-    rb_define_method(C_Bignum, "to_f", Fbig_to_f, 0);
-    rb_define_method(C_Bignum, "abs_f", Fbig_abs, 0);
+    rb_undef_method(CLASS_OF(cBignum), "new");
+
+    rb_define_method(cBignum, "to_s", big_to_s, 0);
+    rb_define_method(cBignum, "coerce", big_coerce, 1);
+    rb_define_method(cBignum, "-@", big_uminus, 0);
+    rb_define_method(cBignum, "+", big_plus, 1);
+    rb_define_method(cBignum, "-", big_minus, 1);
+    rb_define_method(cBignum, "*", big_mul, 1);
+    rb_define_method(cBignum, "/", big_div, 1);
+    rb_define_method(cBignum, "%", big_mod, 1);
+    rb_define_method(cBignum, "divmod", big_divmod, 1);
+    rb_define_method(cBignum, "**", big_pow, 1);
+    rb_define_method(cBignum, "&", big_and, 1);
+    rb_define_method(cBignum, "|", big_or, 1);
+    rb_define_method(cBignum, "^", big_xor, 1);
+    rb_define_method(cBignum, "~", big_neg, 0);
+    rb_define_method(cBignum, "<<", big_lshift, 1);
+    rb_define_method(cBignum, ">>", big_rshift, 1);
+    rb_define_method(cBignum, "[]", big_aref, 1);
+
+    rb_define_method(cBignum, "<=>", big_cmp, 1);
+    rb_define_method(cBignum, "hash", big_hash, 0);
+    rb_define_method(cBignum, "to_i", big_to_i, 0);
+    rb_define_method(cBignum, "to_f", big_to_f, 0);
+    rb_define_method(cBignum, "abs", big_abs, 0);
+    rb_define_method(cBignum, "size", big_size, 0);
 }

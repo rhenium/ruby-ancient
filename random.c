@@ -3,10 +3,10 @@
   random.c -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:50 $
+  $Date: 1996/12/25 10:42:48 $
   created at: Fri Dec 24 16:39:21 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
@@ -16,15 +16,17 @@ static int first = 1;
 static char state[256];
 
 static VALUE
-Fsrand(obj, args)
-    VALUE obj, args;
+f_srand(argc, argv, obj)
+    int argc;
+    VALUE *argv;
+    VALUE obj;
 {
     int seed, old;
 #ifdef HAVE_RANDOM
     static int saved_seed;
 #endif
 
-    if (rb_scan_args(args, "01", &seed) == 0) {
+    if (rb_scan_args(argc, argv, "01", &seed) == 0) {
 	seed = time(0);
     }
     else {
@@ -52,29 +54,46 @@ Fsrand(obj, args)
 }
 
 static VALUE
-Frand(obj, max)
-    VALUE obj, max;
+f_rand(obj, vmax)
+    VALUE obj, vmax;
 {
-    int val;
+    int val, max;
 
 #ifdef HAVE_RANDOM
     if (first == 1) {
 	initstate(1, state, sizeof state);
 	first = 0;
     }
-    val = random() % NUM2INT(max);
+#endif
+
+    switch (TYPE(vmax)) {
+      case T_BIGNUM:
+	return big_rand(vmax);
+	
+      case T_FLOAT:
+	if (RFLOAT(vmax)->value > LONG_MAX || RFLOAT(vmax)->value < LONG_MIN)
+	    return big_rand(dbl2big(RFLOAT(vmax)->value));
+	break;
+    }
+
+    max = NUM2INT(vmax);
+    if (max == 0) ArgError("rand(0)");
+
+#ifdef HAVE_RANDOM
+    val = random() % max;
 #else
-    val = rand() % NUM2INT(max);
+    val = rand() % max;
 #endif
 
     if (val < 0) val = -val;
     return int2inum(val);
 }
 
+void
 Init_Random()
 {
-    extern VALUE C_Kernel;
+    extern VALUE cKernel;
 
-    rb_define_func(C_Kernel, "srand", Fsrand, -2);
-    rb_define_func(C_Kernel, "rand", Frand, 1);
+    rb_define_private_method(cKernel, "srand", f_srand, -1);
+    rb_define_private_method(cKernel, "rand", f_rand, 1);
 }

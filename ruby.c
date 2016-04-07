@@ -3,225 +3,321 @@
   ruby.c -
 
   $Author: matz $
-  $Date: 1994/06/27 15:48:37 $
+  $Date: 1996/12/25 10:42:51 $
   created at: Tue Aug 10 12:47:31 JST 1993
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
 #include "ruby.h"
 #include "re.h"
+#include "dln.h"
 #include <stdio.h>
-#include <sys/file.h>
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <signal.h>
+#include <fcntl.h>
 
-#ifdef HAVE_GETOPT_LONG
-#include "getopt.h"
+#ifdef HAVE_STRING_H
+# include <string.h>
 #else
-#include "missing/getopt.h"
+char *strchr();
+char *strrchr();
+char *strstr();
 #endif
 
-static struct option long_options[] =
-{
-    {"debug", 0, 0, 'd'},
-    {"yydebug", 0, 0, 'y'},
-    {"verbose", 0, 0, 'v'},
-    {"version", 0, 0, 0},
-    {0, 0, 0, 0}
-};
+static int version, copyright;
 
-int debug = 0;
-int verbose = 0;
+int debug = FALSE;
+int verbose = FALSE;
 static int sflag = FALSE;
 
-char *inplace = Qnil;
+char *inplace = FALSE;
 char *strdup();
-char *strstr();
-char *index();
 
 extern int yydebug;
 extern int nerrs;
 
-int xflag = FALSE;
-
-#ifdef USE_DLN
-char *rb_dln_argv0;
-#endif
+static int xflag = FALSE;
+extern VALUE RS, RS_default, ORS, FS;
 
 static void load_stdin();
-void rb_load_file();
+static void load_file();
 
 static int do_loop = FALSE, do_print = FALSE;
 static int do_check = FALSE, do_line = FALSE;
 static int do_split = FALSE;
 
-static char*
+static char *script;
+
+#ifndef RUBY_LIB
+#if defined(MSDOS)
+#define RUBY_LIB "/usr/local/lib/ruby;."
+#else
+#define RUBY_LIB "/usr/local/lib/ruby:."
+#endif
+#endif
+
+#if defined(MSDOS)
+#define RUBY_LIB_SEP ';'
+#else
+#define RUBY_LIB_SEP ':'
+#endif
+
+extern VALUE rb_load_path;
+VALUE Frequire();
+
+static void
+addpath(path)
+    char *path;
+{
+    char *p, *s;
+    VALUE ary;
+
+    if (path == 0) return;
+
+    ary = ary_new();
+    p = s = path;
+    while (*p) {
+	while (*p == RUBY_LIB_SEP) p++;
+	if (s = strrchr(p, RUBY_LIB_SEP)) {
+	    ary_push(ary, str_new(p, (int)(s-p)));
+	    p = s + 1;
+	}
+	else {
+	    ary_push(ary, str_new2(p));
+	    break;
+	}
+    }
+    rb_load_path = ary_plus(ary, rb_load_path);
+}
+
+static void
 proc_options(argcp, argvp)
     int *argcp;
     char ***argvp;
 {
     int argc = *argcp;
     char **argv = *argvp;
-    extern VALUE rb_load_path;
-    extern long reg_syntax;
-    extern char *optarg;
-    extern int optind;
-    int c, i, j, script_given, version, opt_index;
-    extern VALUE RS, ORS, FS;
-    char *script;
-    char *src;
+    int script_given, do_search;
+    char *s;
+
+    if (argc == 0) return;
 
     version = FALSE;
-    script_given = FALSE;
-    script = Qnil;
+    do_search = FALSE;
+    script_given = 0;
 
-    optind = 0;
-    while ((c = getopt_long(argc, argv, "+acde:F:i:I:lnpR:svxX:yNES",
-			    long_options, &opt_index)) != EOF) {
-	switch (c) {
-	  case 0:		/* long options */
-	    if (strcmp(long_options[opt_index].name, "version") == 0) {
-		version = TRUE;
-		show_version();
-	    }
-	    break;
+    for (argc--,argv++; argc > 0; argc--,argv++) {
+	if (argv[0][0] != '-' || !argv[0][1]) break;
+
+	s = argv[0]+1;
+      reswitch:
+	switch (*s) {
+	  case 'a':
+	    do_split = TRUE;
+	    s++;
+	    goto reswitch;
 
 	  case 'p':
 	    do_print = TRUE;
 	    /* through */
 	  case 'n':
 	    do_loop = TRUE;
-	    break;
+	    s++;
+	    goto reswitch;
 
 	  case 'd':
 	    debug = TRUE;
-	    break;
+	    s++;
+	    goto reswitch;
 
 	  case 'y':
 	    yydebug = 1;
-	    break;
+	    s++;
+	    goto reswitch;
 
 	  case 'v':
-	    version = verbose = TRUE;
 	    show_version();
-	    break;
-
-	  case 'e':
-	    script_given++;
-	    if (script == 0) script = "-e";
-	    lex_setsrc("-e", optarg, strlen(optarg));
-	    yyparse();
-	    break;
-
-	  case 'i':
-	    inplace = strdup(optarg);
-	    break;
+	    verbose = 2;
+	  case 'w':
+	    verbose |= 1;
+	    s++;
+	    goto reswitch;
 
 	  case 'c':
 	    do_check = TRUE;
-	    break;
-
-	  case 'x':
-	    xflag = TRUE;
-	    break;
-
-	  case 'X':
-	    if (chdir(optarg) < 0)
-		Fatal("Can't chdir to %s", optarg);
-	    break;
+	    s++;
+	    goto reswitch;
 
 	  case 's':
 	    sflag = TRUE;
-	    break;
+	    s++;
+	    goto reswitch;
 
 	  case 'l':
 	    do_line = TRUE;
 	    ORS = RS;
+	    s++;
+	    goto reswitch;
+
+	  case 'S':
+	    do_search = TRUE;
+	    s++;
+	    goto reswitch;
+
+	  case 'e':
+	    script_given++;
+	    if (script == 0) script = "-e";
+	    if (argv[1]) {
+		compile_string("-e", argv[1], strlen(argv[1]));
+		argc--,argv++;
+	    }
+	    else {
+		compile_string("-e", "", 0);
+	    }
 	    break;
 
-	  case 'R':
-	    {
-		char *p = optarg;
+	  case 'r':
+	    if (*++s) {
+		f_require(Qnil, str_new2(s));
+	    }
+	    else if (argv[1]) {
+		f_require(Qnil, str_new2(argv[1]));
+		argc--,argv++;
+	    }
+	    break;
 
-		while (*p) {
-		    if (*p < '0' || '7' < *p) {
-			break;
-		    }
-		    p++;
-		}
-		if (*p) {
-		    RS = str_new2(optarg);
-		}
-		else {
-		    int i = strtoul(optarg, Qnil, 8);
+	  case 'i':
+	    inplace = strdup(s+1);
+	    break;
 
-		    if (i == 0) RS = str_new(0, 0);
-		    else if (i > 0xff) RS = Qnil;
-		    else {
-			char c = i;
-			RS = str_new(&c, 1);
-		    }
-		}
+	  case 'x':
+	    xflag = TRUE;
+	    s++;
+	    if (*s && chdir(s) < 0) {
+		Fatal("Can't chdir to %s", s);
+	    }
+	    break;
+
+	  case 'X':
+	    s++;
+	    if (!*s) {
+		s = argv[1];
+		argc--,argv++;
+	    }
+	    if (*s && chdir(s) < 0) {
+		Fatal("Can't chdir to %s", s);
 	    }
 	    break;
 
 	  case 'F':
-	    FS = str_new2(optarg);
+	    FS = str_new2(s+1);
 	    break;
 
-	  case 'a':
-	    do_split = TRUE;
-	    break;
-
-	  case 'N':
-	    reg_syntax &= ~RE_MBCTYPE_MASK;
-	    re_set_syntax(reg_syntax);
-	    break;
-	  case 'E':
-	    reg_syntax &= ~RE_MBCTYPE_MASK;
-	    reg_syntax |= RE_MBCTYPE_EUC;
-	    re_set_syntax(reg_syntax);
-	    break;
-	  case 'S':
-	    reg_syntax &= ~RE_MBCTYPE_MASK;
-	    reg_syntax |= RE_MBCTYPE_SJIS;
-	    re_set_syntax(reg_syntax);
-	    break;
+	  case 'K':
+	    s++;
+	    rb_set_kcode(s);
+	    s++;
+	    goto reswitch;
 
 	  case 'I':
-	    Fary_unshift(rb_load_path, str_new2(optarg));
+	    if (*++s)
+		addpath(s);
+	    else if (argv[1]) {
+		addpath(argv[1]);
+		argc--,argv++;
+	    }
+	    break;
+
+	  case '0':
+	    {
+		int numlen;
+		int v;
+		char c;
+
+		v = scan_oct(s, 4, &numlen);
+		s += numlen;
+		if (v > 0377) RS = Qnil;
+		else if (v == 0 && numlen >= 2) {
+		    RS = str_new2("\n\n");
+		}
+		else {
+		    c = v & 0xff;
+		    RS = str_new(&c, 1);
+		}
+	    }
+	    goto reswitch;
+
+	  case '-':
+	    if (!s[1]) {
+		argc--,argv++;
+		goto switch_end;
+	    }
+	    s++;
+	    if (strcmp("copyright", s) == 0)
+		copyright = 1;
+	    else if (strcmp("debug", s) == 0)
+		debug = 1;
+	    else if (strcmp("version", s) == 0)
+		version = 1;
+	    else if (strcmp("verbose", s) == 0)
+		verbose = 2;
+	    else if (strcmp("yydebug", s) == 0)
+		yydebug = 1;
+	    else {
+		Fatal("Unrecognized long option: --%s",s);
+	    }
 	    break;
 
 	  default:
+	    Fatal("Unrecognized switch: -%s",s);
+
+	  case 0:
 	    break;
 	}
     }
 
-    if (argv[0] == Qnil) return Qnil;
+  switch_end:
+    if (*argvp[0] == 0) return;
 
-    if (script_given == 0) {
-	if (argc == optind) {	/* no more args */
-	    if (version == TRUE) exit(0);
+    if (version) {
+	show_version();
+	exit(0);
+    }
+    if (copyright) {
+	show_copyright();
+    }
+
+    if (script_given == FALSE) {
+	if (argc == 0) {	/* no more args */
+	    if (verbose == 3) exit(0);
 	    script = "-";
 	    load_stdin();
 	}
 	else {
-	    script = argv[optind];
-	    rb_load_file(argv[optind]);
-	    optind++;
+	    script = argv[0];
+	    if (script[0] == '\0') {
+		script = "-";
+		load_stdin();
+	    }
+	    else {
+		if (do_search) {
+		    script = dln_find_file(script, getenv("PATH"));
+		    if (!script) script = argv[0];
+		}
+		load_file(script, 1);
+	    }
+	    argc--; argv++;
 	}
     }
+    if (verbose) verbose = TRUE;
 
     xflag = FALSE;
-    *argvp += optind;
-    *argcp -= optind;
+    *argvp = argv;
+    *argcp = argc;
 
     if (sflag) {
 	char *s;
-	VALUE v;
 
 	argc = *argcp; argv = *argvp;
 	for (; argc > 0 && argv[0][0] == '-'; argc--,argv++) {
@@ -230,131 +326,198 @@ proc_options(argcp, argvp)
 		break;
 	    }
 	    argv[0][0] = '$';
-	    if (s = index(argv[0], '=')) {
+	    if (s = strchr(argv[0], '=')) {
 		*s++ = '\0';
-		GC_LINK;
-		GC_PRO3(v, str_new2(s));
-		rb_gvar_set2((*argvp)[0], v);
-		GC_UNLINK;
+		rb_gvar_set2(argv[0], str_new2(s));
 	    }
 	    else {
-		rb_gvar_set2((*argvp)[0], TRUE);
+		rb_gvar_set2(argv[0], TRUE);
 	    }
 	}
 	*argcp = argc; *argvp = argv;
     }
 
-    return script;
+}
+
+static VALUE
+open_to_load(fname)
+    char *fname;
+{
 }
 
 static void
-readin(fd, fname)
-    int fd;
+load_file(fname, script)
     char *fname;
+    int script;
 {
-    struct stat st;
-    char *ptr, *p, *pend;
+    extern VALUE rb_stdin;
+    VALUE f;
+    int line_start = 1;
 
-    if (fstat(fd, &st) < 0) rb_sys_fail(fname);
-    if (!S_ISREG(st.st_mode))
-	Fail("script is not a regular file - %s", fname);
-
-    p = ptr = ALLOC_N(char, st.st_size+1);
-    if (read(fd, ptr, st.st_size) != st.st_size) {
-	rb_sys_fail(fname);
+    if (strcmp(fname, "-") == 0) {
+	f = rb_stdin;
     }
-    p = ptr;
-    pend = p + st.st_size;
-    if (xflag) {
-	char *s = p;
+    else {
+	f = file_open(fname, "r");
+    }
 
-	*pend = '\0'; 
-	xflag = FALSE;
-	while (p < pend) {
-	    while (s < pend && *s != '\n') s++;
-	    if (*s != '\n') break;
-	    *s = '\0';
-	    if (p[0] == '#' && p[1] == '!' && strstr(p, "ruby")) {
-		if (p = strstr(p, "ruby -")) {
+    if (script) {
+	VALUE c;
+	VALUE line;
+	VALUE rs = RS;
+
+	RS = RS_default;
+	if (xflag) {
+	    xflag = FALSE;
+	    while (!NIL_P(line = io_gets(f))) {
+		line_start++;
+		if (RSTRING(line)->len > 2
+		    || RSTRING(line)->ptr[0] != '#'
+		    || RSTRING(line)->ptr[1] != '!') {
+		    if (strstr(RSTRING(line)->ptr, "ruby")) {
+			goto start_read;
+		    }
+		}
+	    }
+	    RS = rs;
+	    LoadError("No Ruby script found in input");
+	}
+
+	c = io_getc(f);
+	if (c == INT2FIX('#')) {
+	    line = io_gets(f);
+	    line_start++;
+
+	    if (RSTRING(line)->len > 2
+		|| RSTRING(line)->ptr[0] != '#'
+		|| RSTRING(line)->ptr[1] != '!') {
+
+		char *p;
+
+	      start_read:
+		if (p = strstr(RSTRING(line)->ptr, "ruby -")) {
 		    int argc; char *argv[2]; char **argvp = argv;
-		    argc = 2; argv[0] = Qnil; argv[1] = p + 5;
+		    char *s;
+
+		    s = RSTRING(line)->ptr;
+		    while (isspace(*s++))
+			;
+		    *s = '\0';
+		    RSTRING(line)->ptr[RSTRING(line)->len-1] = '\0';
+		    if (RSTRING(line)->ptr[RSTRING(line)->len-2] == '\r')
+			RSTRING(line)->ptr[RSTRING(line)->len-2] = '\0';
+		    argc = 2; argv[0] = 0; argv[1] = p + 5;
 		    proc_options(&argc, &argvp);
 		}
-		xflag = TRUE;
-		p = s + 1;
-		goto start_read;
 	    }
-	    p = s + 1;
 	}
-	Fail("No Ruby script found in input");
+	else if (!NIL_P(c)) {
+	    io_ungetc(f, c);
+	}
+	RS = rs;
     }
-  start_read:
-    lex_setsrc(fname, p, pend - p);
-    yyparse();
-    free(ptr);
+    compile_file(fname, f, line_start);
+    if (f != rb_stdin) io_close(f);
 }
 
 void
 rb_load_file(fname)
     char *fname;
 {
-    int fd;
-    char *ptr;
-
-    if (fname[0] == '\0') {
-	load_stdin();
-	return;
-    }
-
-    fd = open(fname, O_RDONLY, 0);
-    if (fd < 0) rb_sys_fail(fname);
-    readin(fd, fname);
-    close(fd);
+    load_file(fname, 0);
 }
 
 static void
 load_stdin()
 {
-    char buf[32];
-    FILE *f;
-    char c;
-    int fd;
+    load_file("-", 1);
+}
 
-    sprintf(buf, "/tmp/ruby-f%d", getpid());
-    f = fopen(buf, "w");
-    fd = open(buf, O_RDONLY, 0);
-    if (fd < 0) rb_sys_fail(buf);
-    unlink(buf);
-    while ((c = getchar()) != EOF) {
-	putc(c, f);
+VALUE Progname;
+VALUE Argv;
+
+static int origargc;
+static char **origargv, **origenvp;
+
+static VALUE
+set_arg0(val, id)
+    VALUE val;
+    ID id;
+{
+    char *s;
+    int i;
+    static int len;
+
+    Check_Type(val, T_STRING);
+    if (len == 0) {
+	s = origargv[0];
+	s += strlen(s);
+	/* See if all the arguments are contiguous in memory */
+	for (i = 1; i < origargc; i++) {
+	    if (origargv[i] == s + 1)
+		s += strlen(++s);	/* this one is ok too */
+	}
+	len = s - origargv[0];
     }
-    fclose(f);
+    s = RSTRING(val)->ptr;
+    i = RSTRING(val)->len;
+    if (i > len) {
+	memcpy(origargv[0], s, len);
+	origargv[0][len] = '\0';
+    }
+    else {
+	memcpy(origargv[0], s, i);
+	s = origargv[0]+i;
+	*s++ = '\0';
+	while (++i < len)
+	    *s++ = ' ';
+    }
+    Progname = str_new2(origargv[0]);
 
-    if (fd < 0) rb_sys_fail(buf);
-
-    readin(fd, "-");
+    return val;
 }
 
 void
-rb_main(argc, argv)		/* real main() is in eval.c */
-    int argc;
-    char **argv;
+ruby_script(name)
+    char *name;
 {
-    char *script;
+    if (name) {
+	Progname = str_new2(name);
+    }
+}
+
+void
+ruby_options(argc, argv, envp)
+    int argc;
+    char **argv, **envp;
+{
     extern VALUE errat;
+    int i;
 
-    rb_call_inits();
+    origargc = argc; origargv = argv; origenvp = envp;
 
-    rb_define_variable("$@", &errat, Qnil, Qnil);
     errat = str_new2(argv[0]);
-    rb_define_variable("$VERBOSE", &verbose, Qnil, Qnil);
-    rb_define_variable("$DEBUG", &debug, Qnil, Qnil);
+    rb_define_variable("$VERBOSE", &verbose);
+    rb_define_variable("$DEBUG", &debug);
 
-#ifdef USE_DLN
-    rb_dln_argv0 = argv[0];
+    addpath(getenv("RUBYLIB"));
+    addpath(RUBY_LIB);
+#ifdef RUBY_ARCHLIB
+    addpath(RUBY_ARCHLIB);
+#endif
+#if defined(USE_DLN_A_OUT)
+    dln_argv0 = argv[0];
 #endif
 
-    script = proc_options(&argc, &argv);
+    rb_define_hooked_variable("$0", &Progname, 0, set_arg0);
+
+    Argv = ary_new2(argc);
+    rb_define_readonly_variable("$*", &Argv);
+    rb_define_global_const("ARGV", Argv);
+
+    proc_options(&argc, &argv);
+    ruby_script(script);
+
     if (do_check && nerrs == 0) {
 	printf("Syntax OK\n");
 	exit(0);
@@ -363,12 +526,10 @@ rb_main(argc, argv)		/* real main() is in eval.c */
 	yyappend_print();
     }
     if (do_loop) {
-	yywhole_loop(do_line, do_split);
+	yywhile_loop(do_line, do_split);
     }
 
-    if (nerrs == 0) {
-	TopLevel(script, argc, argv);
+    for (i=0; i < argc; i++) {
+	ary_push(Argv, str_new2(argv[i]));
     }
-
-    exit(nerrs);
 }

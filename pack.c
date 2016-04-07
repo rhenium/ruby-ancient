@@ -3,10 +3,10 @@
   pack.c -
 
   $Author: matz $
-  $Date: 1994/06/17 14:23:50 $
+  $Date: 1996/12/25 09:40:22 $
   created at: Thu Feb 10 15:17:05 JST 1994
 
-  Copyright (C) 1994 Yukihiro Matsumoto
+  Copyright (C) 1993-1996 Yukihiro Matsumoto
 
 ************************************************/
 
@@ -20,26 +20,30 @@
 			+(((x)&0x0000FF00)<<8)	\
 			+(((x)&0x00FF0000)>>8)	)
 #ifdef WORDS_BIGENDIAN
+#ifndef ntohs
 #define ntohs(x) (x)
 #define ntohl(x) (x)
 #define htons(x) (x)
 #define htonl(x) (x)
+#endif
 #define htovs(x) swaps(x)
 #define htovl(x) swapl(x)
 #define vtohs(x) swaps(x)
 #define vtohl(x) swapl(x)
 #else /* LITTLE ENDIAN */
+#ifndef ntohs
 #define ntohs(x) swaps(x)
 #define ntohl(x) swapl(x)
 #define htons(x) swaps(x)
 #define htonl(x) swapl(x)
+#endif
 #define htovs(x) (x)
 #define htovl(x) (x)
 #define vtohs(x) (x)
 #define vtohl(x) (x)
 #endif
 
-extern VALUE C_String, C_Array;
+extern VALUE cString, cArray;
 double atof();
 
 static char *toofew = "too few arguments";
@@ -48,7 +52,7 @@ int strtoul();
 static void encodes();
 
 static VALUE
-Fpck_pack(ary, fmt)
+pack_pack(ary, fmt)
     struct RArray *ary;
     struct RString *fmt;
 {
@@ -65,20 +69,18 @@ Fpck_pack(ary, fmt)
 
     p = fmt->ptr;
     pend = fmt->ptr + fmt->len;
-    GC_LINK;
-    GC_PRO2(from);
-    GC_PRO3(res, str_new(0, 0));
+    res = str_new(0, 0);
 
     items = ary->len;
     idx = 0;
 
-#define NEXTFROM (items-- > 0 ? ary->ptr[idx++] : Fail(toofew))
+#define NEXTFROM (items-- > 0 ? ary->ptr[idx++] : (ArgError(toofew),0))
 
     while (p < pend) {
 	type = *p++;		/* get data type */
 
 	if (*p == '*') {	/* set data length */
-	    len = index("@Xxu", type) ? 0 : items;
+	    len = strchr("@Xxu", type) ? 0 : items;
             p++;
 	}
 	else if (isdigit(*p)) {
@@ -93,8 +95,8 @@ Fpck_pack(ary, fmt)
 	  case 'B': case 'b':
 	  case 'H': case 'h':
 	    from = NEXTFROM;
-	    if (from == Qnil) {
-		ptr = Qnil;
+	    if (NIL_P(from)) {
+		ptr = 0;
 		plen = 0;
 	    }
 	    else {
@@ -108,30 +110,20 @@ Fpck_pack(ary, fmt)
 
 	    switch (type) {
 	      case 'a':
-		if (plen > len)
+	      case 'A':
+		if (plen >= len)
 		    str_cat(res, ptr, len);
 		else {
 		    str_cat(res, ptr, plen);
-		    len == plen;
+		    len -= plen;
 		    while (len >= 10) {
-			str_cat(res, nul10, 10);
+			if (type == 'A')
+			    str_cat(res, spc10, 10);
+			else
+			    str_cat(res, nul10, 10);
 			len -= 10;
 		    }
 		    str_cat(res, nul10, len);
-		}
-		break;
-
-	      case 'A':
-		if (plen > len)
-		    str_cat(res, ptr, len);
-		else {
-		    str_cat(res, ptr, plen);
-		    len == plen;
-		    while (len >= 10) {
-			str_cat(res, spc10, 10);
-			len -= 10;
-		    }
-		    str_cat(res, spc10, len);
 		}
 		break;
 
@@ -246,7 +238,7 @@ Fpck_pack(ary, fmt)
 		char c;
 
 		from = NEXTFROM;
-		if (from == Qnil) c = 0;
+		if (NIL_P(from)) c = 0;
 		else {
 		    c = NUM2INT(from);
 		}
@@ -260,7 +252,7 @@ Fpck_pack(ary, fmt)
 		short s;
 
 		from = NEXTFROM;
-		if (from == Qnil) s = 0;
+		if (NIL_P(from)) s = 0;
 		else {
 		    s = NUM2INT(from);
 		}
@@ -274,7 +266,7 @@ Fpck_pack(ary, fmt)
 		int i;
 
 		from = NEXTFROM;
-		if (from == Qnil) i = 0;
+		if (NIL_P(from)) i = 0;
 		else {
 		    i = NUM2INT(from);
 		}
@@ -288,7 +280,7 @@ Fpck_pack(ary, fmt)
 		long l;
 
 		from = NEXTFROM;
-		if (from == Qnil) l = 0;
+		if (NIL_P(from)) l = 0;
 		else {
 		    l = NUM2INT(from);
 		}
@@ -301,7 +293,7 @@ Fpck_pack(ary, fmt)
 		short s;
 
 		from = NEXTFROM;
-		if (from == Qnil) s = 0;
+		if (NIL_P(from)) s = 0;
 		else {
 		    s = NUM2INT(from);
 		}
@@ -315,7 +307,7 @@ Fpck_pack(ary, fmt)
 		long l;
 
 		from = NEXTFROM;
-		if (from == Qnil) l = 0;
+		if (NIL_P(from)) l = 0;
 		else {
 		    l = NUM2INT(from);
 		}
@@ -369,7 +361,7 @@ Fpck_pack(ary, fmt)
 		short s;
 
 		from = NEXTFROM;
-		if (from == Qnil) s = 0;
+		if (NIL_P(from)) s = 0;
 		else {
 		    s = NUM2INT(from);
 		}
@@ -383,7 +375,7 @@ Fpck_pack(ary, fmt)
 		long l;
 
 		from = NEXTFROM;
-		if (from == Qnil) l = 0;
+		if (NIL_P(from)) l = 0;
 		else {
 		    l = NUM2INT(from);
 		}
@@ -404,7 +396,7 @@ Fpck_pack(ary, fmt)
 	  case 'X':
 	  shrink:
 	    if (RSTRING(res)->len < len)
-		Fail("X outside of string");
+		ArgError("X outside of string");
 	    RSTRING(res)->len -= len;
 	    RSTRING(res)->ptr[RSTRING(res)->len] = '\0';
 	    break;
@@ -417,7 +409,7 @@ Fpck_pack(ary, fmt)
 	    break;
 
 	  case '%':
-	    Fail("% may only be used in unpack");
+	    ArgError("% may only be used in unpack");
 	    break;
 
 	  case 'u':
@@ -446,7 +438,6 @@ Fpck_pack(ary, fmt)
 	    break;
 	}
     }
-    GC_UNLINK;
 
     return res;
 }
@@ -460,18 +451,18 @@ encodes(str, s, len)
     char hunk[4];
     char *p, *pend;
 
-    p = str->ptr + str->len;
     *hunk = len + ' ';
     str_cat(str, hunk, 1);
     while (len > 0) {
 	hunk[0] = ' ' + (077 & (*s >> 2));
-	hunk[1] = ' ' + (077 & ((*s << 4) & 060 | (s[1] >> 4) & 017));
-	hunk[2] = ' ' + (077 & ((s[1] << 2) & 074 | (s[2] >> 6) & 03));
+	hunk[1] = ' ' + (077 & (((*s << 4) & 060) | ((s[1] >> 4) & 017)));
+	hunk[2] = ' ' + (077 & (((s[1] << 2) & 074) | ((s[2] >> 6) & 03)));
 	hunk[3] = ' ' + (077 & (s[2] & 077));
 	str_cat(str, hunk, 4);
 	s += 3;
 	len -= 3;
     }
+    p = str->ptr;
     pend = str->ptr + str->len;
     while (p < pend) {
 	if (*p == ' ')
@@ -482,7 +473,7 @@ encodes(str, s, len)
 }
 
 static VALUE
-Fpck_unpack(str, fmt)
+pack_unpack(str, fmt)
     struct RString *str, *fmt;
 {
     static char *hexdigits = "0123456789abcdef0123456789ABCDEFx";
@@ -499,10 +490,8 @@ Fpck_unpack(str, fmt)
     p = fmt->ptr;
     pend = p + fmt->len;
 
-    GC_LINK;
-    GC_PRO3(ary, ary_new());
+    ary = ary_new();
     while (p < pend) {
-      retry:
 	type = *p++;
 	if (*p == '*') {
 	    len = send - s;
@@ -517,7 +506,7 @@ Fpck_unpack(str, fmt)
 
 	switch (type) {
 	  case '%':
-	    Fail("% is not supported(yet)");
+	    ArgError("% is not supported(yet)");
 	    break;
 
 	  case 'A':
@@ -533,7 +522,7 @@ Fpck_unpack(str, fmt)
 	    }
 	  case 'a':
 	    if (len > send - s) len = send - s;
-	    Fary_push(ary, str_new(s, len));
+	    ary_push(ary, str_new(s, len));
 	    s += len;
 	    break;
 
@@ -545,7 +534,7 @@ Fpck_unpack(str, fmt)
 
 		if (p[-1] == '*' || len > (send - s) * 8)
 		    len = (send - s) * 8;
-		Fary_push(ary, bitstr = str_new(0, len + 1));
+		ary_push(ary, bitstr = str_new(0, len + 1));
 		t = RSTRING(bitstr)->ptr;
 		for (i=0; i<len; i++) {
 		    if (i & 7) bits >>= 1;
@@ -564,7 +553,7 @@ Fpck_unpack(str, fmt)
 
 		if (p[-1] == '*' || len > (send - s) * 8)
 		    len = (send - s) * 8;
-		Fary_push(ary, bitstr = str_new(0, len + 1));
+		ary_push(ary, bitstr = str_new(0, len + 1));
 		t = RSTRING(bitstr)->ptr;
 		for (i=0; i<len; i++) {
 		    if (i & 7) bits <<= 1;
@@ -583,7 +572,7 @@ Fpck_unpack(str, fmt)
 
 		if (p[-1] == '*' || len > (send - s) * 2)
 		    len = (send - s) * 2;
-		Fary_push(ary, bitstr = str_new(0, len + 1));
+		ary_push(ary, bitstr = str_new(0, len + 1));
 		t = RSTRING(bitstr)->ptr;
 		for (i=0; i<len; i++) {
 		    if (i & 1)
@@ -604,7 +593,7 @@ Fpck_unpack(str, fmt)
 
 		if (p[-1] == '*' || len > (send - s) * 2)
 		    len = (send - s) * 2;
-		Fary_push(ary, bitstr = str_new(0, len + 1));
+		ary_push(ary, bitstr = str_new(0, len + 1));
 		t = RSTRING(bitstr)->ptr;
 		for (i=0; i<len; i++) {
 		    if (i & 1)
@@ -621,8 +610,11 @@ Fpck_unpack(str, fmt)
 	    if (len > send - s)
 		len = send - s;
 	    while (len-- > 0) {
-		char c = *s++;
-		Fary_push(ary, INT2FIX(c));
+                int c = *s++;
+#ifdef __CHAR_UNSIGNED__
+                if (c > (char)127) c-=256;
+#endif
+		ary_push(ary, INT2FIX(c));
 	    }
 	    break;
 
@@ -631,7 +623,7 @@ Fpck_unpack(str, fmt)
 		len = send - s;
 	    while (len-- > 0) {
 		unsigned char c = *s++;
-		Fary_push(ary, INT2FIX(c));
+		ary_push(ary, INT2FIX(c));
 	    }
 	    break;
 
@@ -642,7 +634,7 @@ Fpck_unpack(str, fmt)
 		short tmp;
 		memcpy(&tmp, s, sizeof(short));
 		s += sizeof(short);
-		Fary_push(ary, INT2FIX(tmp));
+		ary_push(ary, INT2FIX(tmp));
 	    }
 	    break;
 
@@ -653,7 +645,7 @@ Fpck_unpack(str, fmt)
 		unsigned short tmp;
 		memcpy(&tmp, s, sizeof(unsigned short));
 		s += sizeof(unsigned short);
-		Fary_push(ary, INT2FIX(tmp));
+		ary_push(ary, INT2FIX(tmp));
 	    }
 	    break;
 
@@ -664,7 +656,7 @@ Fpck_unpack(str, fmt)
 		int tmp;
 		memcpy(&tmp, s, sizeof(int));
 		s += sizeof(int);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -675,7 +667,7 @@ Fpck_unpack(str, fmt)
 		unsigned int tmp;
 		memcpy(&tmp, s, sizeof(unsigned int));
 		s += sizeof(unsigned int);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -686,7 +678,7 @@ Fpck_unpack(str, fmt)
 		long tmp;
 		memcpy(&tmp, s, sizeof(long));
 		s += sizeof(long);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -697,7 +689,7 @@ Fpck_unpack(str, fmt)
 		unsigned long tmp;
 		memcpy(&tmp, s, sizeof(unsigned long));
 		s += sizeof(unsigned long);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -709,7 +701,7 @@ Fpck_unpack(str, fmt)
 		memcpy(&tmp, s, sizeof(short));
 		s += sizeof(short);
 		tmp = ntohs(tmp);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -721,7 +713,7 @@ Fpck_unpack(str, fmt)
 		memcpy(&tmp, s, sizeof(long));
 		s += sizeof(long);
 		tmp = ntohl(tmp);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -733,7 +725,7 @@ Fpck_unpack(str, fmt)
 		float tmp;
 		memcpy(&tmp, s, sizeof(float));
 		s += sizeof(float);
-		Fary_push(ary, float_new((double)tmp));
+		ary_push(ary, float_new((double)tmp));
 	    }
 	    break;
 
@@ -745,7 +737,7 @@ Fpck_unpack(str, fmt)
 		double tmp;
 		memcpy(&tmp, s, sizeof(double));
 		s += sizeof(double);
-		Fary_push(ary, float_new(tmp));
+		ary_push(ary, float_new(tmp));
 	    }
 	    break;
 
@@ -757,7 +749,7 @@ Fpck_unpack(str, fmt)
 		memcpy(&tmp, s, sizeof(short));
 		s += sizeof(short);
 		tmp = vtohs(tmp);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -769,7 +761,7 @@ Fpck_unpack(str, fmt)
 		memcpy(&tmp, s, sizeof(long));
 		s += sizeof(long);
 		tmp = vtohl(tmp);
-		Fary_push(ary, int2inum(tmp));
+		ary_push(ary, int2inum(tmp));
 	    }
 	    break;
 
@@ -777,13 +769,16 @@ Fpck_unpack(str, fmt)
 	    {
 		VALUE str = str_new(0, (send - s)*3/4);
 		char *ptr = RSTRING(str)->ptr;
+		int total = 0;
 
 		while (s < send && *s > ' ' && *s < 'a') {
-		    int a,b,c,d;
+		    long a,b,c,d;
 		    char hunk[4];
 
 		    hunk[3] = '\0';
 		    len = (*s++ - ' ') & 077;
+		    total += len;
+
 		    while (len > 0) {
 			if (s < send && *s >= ' ')
 			    a = (*s++ - ' ') & 077;
@@ -808,12 +803,13 @@ Fpck_unpack(str, fmt)
 			ptr += 3;
 			len -= 3;
 		    }
-		    if (s[0] == '\n')
+		    if (*s == '\n' || *s == '\r')
 			s++;
-		    else if (s[1] == '\n') /* possible checksum byte */
-			s += 2;
+		    else if (s+1 == send || s[1] == '\n' || s[1] == '\r')
+			s += 2;	/* possible checksum byte */
 		}
-		Fary_push(ary, str);
+		RSTRING(str)->len = total;
+		ary_push(ary, str);
 	    }
 	    break;
 
@@ -823,13 +819,13 @@ Fpck_unpack(str, fmt)
 
 	  case 'X':
 	    if (len > s - str->ptr)
-		Fail("X outside of string");
+		ArgError("X outside of string");
 	    s -= len;
 	    break;
 
 	  case 'x':
 	    if (len > send - s)
-		Fail("x outside of string");
+		ArgError("x outside of string");
 	    s += len;
 	    break;
 
@@ -838,12 +834,12 @@ Fpck_unpack(str, fmt)
 	}
     }
 
-    GC_UNLINK;
     return ary;
 }
 
+void
 Init_pack()
 {
-    rb_define_method(C_Array, "pack", Fpck_pack, 1);
-    rb_define_method(C_String, "unpack", Fpck_unpack, 1);
+    rb_define_method(cArray, "pack", pack_pack, 1);
+    rb_define_method(cString, "unpack", pack_unpack, 1);
 }

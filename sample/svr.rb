@@ -1,13 +1,22 @@
+# socket example - server side
+# usage: ruby svr.rb
+
+require "socket"
+
 gs = TCPserver.open(0)
-printf("server port is on %d\n", gs.port)
+addr = gs.addr
+addr.shift
+printf("server is on %d\n", addr.join(":"))
 socks = [gs]
 
-while %TRUE
+while TRUE
   nsock = select(socks);
-  if nsock == nil; continue end
+  next if nsock == nil
   for s in nsock[0]
     if s == gs
-      socks.push(s.accept)
+      ns = s.accept
+      socks.push(ns)
+      print(s, " is accepted\n")
     else
       if s.eof
 	print(s, " is gone\n")
