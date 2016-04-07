@@ -526,7 +526,7 @@ rb_trap_exec()
     }
 }
 
-#ifdef HAVE_SYSCALL_H
+#if defined(HAVE_SYSCALL_H) && 0
 #include <syscall.h>
 
 #ifdef SYS_read
@@ -704,7 +704,7 @@ Fproc_getpgrp(obj, args)
 	pid = NUM2INT(vpid);
     }
 
-    pgrp = getpgrp(pid);
+    pgrp = getpgid(pid);
     return INT2FIX(pgrp);
 }
 
@@ -717,7 +717,7 @@ Fproc_setpgrp(obj, pid, pgrp)
     ipid = NUM2INT(pid);
     ipgrp = NUM2INT(pgrp);
 
-    if (getpgrp(ipid, ipgrp) == -1) rb_sys_fail(Qnil);
+    if (setpgid(ipid, ipgrp) == -1) rb_sys_fail(Qnil);
 
     return Qnil;
 }

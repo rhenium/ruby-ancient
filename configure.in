@@ -58,6 +58,7 @@ AC_COMPILE_CHECK([pw_comment in struct passwd], [#include <pwd.h>],
 AC_COMPILE_CHECK([pw_expire in struct passwd], [#include <pwd.h>],
 [struct passwd pw; pw.pw_expire;], AC_DEFINE(PW_EXPIRE))
 AC_HAVE_LIBRARY(m, [LIBS="$LIBS -lm"])
-AC_HAVE_LIBRARY(dbm, [LIBS="$LIBS -ldbm"])
+AC_HAVE_LIBRARY(crypt, [LIBS="$LIBS -lcrypt"])
+AC_HAVE_LIBRARY(dbm, [LIBS="$LIBS -lgdbm_compat"])
 AC_HAVE_LIBRARY(socket, [LIBS="$LIBS -lsocket"])
 AC_OUTPUT(Makefile)

@@ -160,7 +160,7 @@ static VALUE
 Fdic_each(dic)
     struct RDict *dic;
 {
-    st_foreach(dic->tbl, dic_each);
+    st_foreach(dic->tbl, dic_each, Qnil);
     return (VALUE)dic;
 }
 
@@ -176,7 +176,7 @@ static VALUE
 Fdic_each_key(dic)
     struct RDict *dic;
 {
-    st_foreach(dic->tbl, dic_each_key);
+    st_foreach(dic->tbl, dic_each_key, Qnil);
     return (VALUE)dic;
 }
 
@@ -192,7 +192,7 @@ static VALUE
 Fdic_each_pair(dic)
     struct RDict *dic;
 {
-    st_foreach(dic->tbl, dic_each_pair);
+    st_foreach(dic->tbl, dic_each_pair, Qnil);
     return (VALUE)dic;
 }
 

@@ -1,21 +1,4 @@
 # Generated automatically from Makefile.in by configure.
-# Main Makefile for GNU m4.
-# Copyright (C) 1992 Free Software Foundation, Inc.
-
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2, or (at your option)
-# any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-
 SHELL = /bin/sh
 
 #### Start of system configuration section. ####
@@ -23,7 +6,7 @@ SHELL = /bin/sh
 srcdir = .
 VPATH = .
 
-CC = gcc -traditional
+CC = /usr/bin/cc -m32 -march=i686
 DBM = -fpcc-struct-return
 YACC = bison -y
 INSTALL = /usr/bin/install -c
@@ -32,9 +15,9 @@ INSTALL_DATA = $(INSTALL) -m 644
 MAKEINFO = makeinfo
 
 CFLAGS = -g
-LDFLAGS = -static $(CFLAGS)
-LIBS =  -lm -ldbm
-DEFS =  -DHAVE_UNISTD_H=1 -DHAVE_SYSCALL_H=1 -DHAVE_A_OUT_H=1 -DDIRENT=1 -DGETGROUPS_T=int -DRETSIGTYPE=void -DHAVE_STRTOL=1 -DHAVE_STRDUP=1 -DHAVE_KILLPG=1 -DHAVE_MKDIR=1 -DHAVE_STRFTIME=1 -DHAVE_PUTENV=1 -DHAVE_ALLOCA_H=1 -DPW_AGE=1 -DPW_COMMENT=1
+LDFLAGS =  $(CFLAGS)
+LIBS =  -lm -lcrypt -lgdbm_compat
+DEFS =  -DHAVE_UNISTD_H=1 -DHAVE_SYSCALL_H=1 -DHAVE_A_OUT_H=1 -DDIRENT=1 -DGETGROUPS_T=gid_t -DRETSIGTYPE=void -DHAVE_GETOPT_LONG=1 -DHAVE_MEMMOVE=1 -DHAVE_STRERROR=1 -DHAVE_STRTOUL=1 -DHAVE_STRDUP=1 -DHAVE_STRSTR=1 -DHAVE_SETENV=1 -DHAVE_KILLPG=1 -DHAVE_MKDIR=1 -DHAVE_STRFTIME=1 -DHAVE_SOCKET=1 -DHAVE_RANDOM=1 -DHAVE_WAIT4=1 -DHAVE_WAITPID=1 -DHAVE_ALLOCA_H=1 -DHAVE_ST_BLKSIZE=1 -DHAVE_ST_BLOCKS=1 -DHAVE_ST_RDEV=1
 
 prefix = /usr/local
 binprefix = 
@@ -59,7 +42,7 @@ HDRS          = defines.h \
 		version.h
 
 SRCS          = array.c \
-		autoexec.c \
+		bignum.c \
 		class.c \
 		compar.c \
 		dbm.c \
@@ -97,7 +80,7 @@ SRCS          = array.c \
 		version.c
 
 OBJS	      = array.o \
-		autoexec.o \
+		bignum.o \
 		class.o \
 		compar.o \
 		dbm.o \
@@ -162,28 +145,31 @@ dbm.o:dbm.c
 # Prevent GNU make v3 from overflowing arg limit on SysV.
 .NOEXPORT:
 ###
+parse.o : parse.y ruby.h defines.h env.h ident.h node.h st.h regex.h 
+###
 array.o : array.c ruby.h defines.h 
-autoexec.o : autoexec.c ruby.h defines.h 
-class.o : class.c ruby.h defines.h node.h st.h 
+bignum.o : bignum.c ruby.h defines.h 
+class.o : class.c ruby.h defines.h env.h node.h st.h 
 compar.o : compar.c ruby.h defines.h 
 dbm.o : dbm.c ruby.h defines.h 
 dict.o : dict.c ruby.h defines.h st.h 
 dir.o : dir.c ruby.h defines.h 
 dln.o : dln.c defines.h dln.h 
 enum.o : enum.c ruby.h defines.h 
-error.o : error.c ruby.h defines.h 
+error.o : error.c ruby.h defines.h env.h 
 etc.o : etc.c ruby.h defines.h 
-eval.o : eval.c ruby.h defines.h node.h ident.h st.h 
+eval.o : eval.c ruby.h defines.h env.h node.h ident.h st.h 
 file.o : file.c ruby.h defines.h io.h 
-gc.o : gc.c ruby.h defines.h st.h 
+gc.o : gc.c ruby.h defines.h env.h st.h 
 inits.o : inits.c 
 io.o : io.c ruby.h defines.h io.h 
 math.o : math.c ruby.h defines.h 
-methods.o : methods.c ruby.h defines.h node.h 
+methods.o : methods.c ruby.h defines.h env.h node.h 
 missing.o : missing.c ruby.h defines.h missing/memmove.c missing/strerror.c \
-  missing/strtoul.c missing/strftime.c missing/getopt.h missing/getopt.c missing/getopt1.c 
-numeric.o : numeric.c ruby.h defines.h 
-object.o : object.c ruby.h defines.h 
+  missing/strtoul.c missing/strftime.c missing/strstr.c missing/getopt.h missing/getopt.c \
+  missing/getopt1.c missing/mkdir.c 
+numeric.o : numeric.c ruby.h defines.h env.h 
+object.o : object.c ruby.h defines.h env.h node.h st.h 
 pack.o : pack.c ruby.h defines.h 
 process.o : process.c ruby.h defines.h st.h 
 random.o : random.c ruby.h defines.h 
@@ -191,12 +177,11 @@ range.o : range.c ruby.h defines.h
 re.o : re.c ruby.h defines.h re.h regex.h 
 regex.o : regex.c regex.h 
 ruby.o : ruby.c ruby.h defines.h re.h regex.h missing/getopt.h 
-socket.o : socket.c ruby.h defines.h io.h 
+socket.o : socket.c ruby.h defines.h 
 sprintf.o : sprintf.c ruby.h defines.h 
 st.o : st.c st.h 
 string.o : string.c ruby.h defines.h re.h regex.h 
-struct.o : struct.c ruby.h defines.h 
+struct.o : struct.c ruby.h defines.h env.h 
 time.o : time.c ruby.h defines.h 
-variable.o : variable.c ruby.h defines.h st.h ident.h 
-version.o : version.c ruby.h defines.h \
-  version.h
+variable.o : variable.c ruby.h defines.h env.h node.h ident.h st.h 
+version.o : version.c ruby.h defines.h version.h 

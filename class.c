@@ -248,7 +248,7 @@ rb_define_single_method(obj, name, func, argc)
     VALUE (*func)();
     int argc;
 {
-    rb_define_method(rb_single_class(obj), name, func, argc, MTH_METHOD);
+    rb_define_method(rb_single_class(obj), name, func, argc);
 }
 
 void
@@ -302,14 +302,10 @@ rb_define_single_attr(obj, name, pub)
     rb_define_attr(rb_single_class(obj), name, pub);
 }
 
-#include <varargs.h>
 #include <ctype.h>
 
 int
-rb_scan_args(args, fmt, va_alist)
-    VALUE args;
-    char *fmt;
-    va_dcl
+rb_scan_args(VALUE args, char *fmt, ...)
 {
     int n, i, len;
     char *p = fmt;
@@ -324,7 +320,7 @@ rb_scan_args(args, fmt, va_alist)
 	len = RARRAY(args)->len;
     }
 
-    va_start(vargs);
+    va_start(vargs, fmt);
 
     if (*p == '*') {
 	var = va_arg(vargs, VALUE*);

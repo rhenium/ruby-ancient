@@ -23,7 +23,6 @@ VALUE C_Integer;
 VALUE C_Fixnum;
 
 extern VALUE C_Range;
-double big2dbl();
 
 static
 num_coerce_bin(this, other)
@@ -884,7 +883,6 @@ Ffix_id2name(fix)
 }
 
 extern VALUE M_Comparable;
-extern Fkrn_inspect();
 
 Init_Numeric()
 {

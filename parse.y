@@ -1064,14 +1064,6 @@ comma		: ',' 		{ yyerrok; }
 static char *tokenbuf = NULL;
 static int   tokidx, toksiz = 0;
 
-char *xmalloc();
-char *xrealloc();
-VALUE newregexp();
-VALUE newstring();
-VALUE newfloat();
-VALUE newinteger();
-char *strdup();
-
 #define EXPAND_B 1
 #define LEAVE_BS 2
 

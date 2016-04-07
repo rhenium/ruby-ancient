@@ -250,7 +250,7 @@ static VALUE
 Ftime_coerce(time1, time2)
     VALUE time1, time2;
 {
-    return time_new(CLASS_OF(time1), NUM2INT(time2), 0);
+    return time_new_internal(CLASS_OF(time1), NUM2INT(time2), 0);
 }
 
 static VALUE

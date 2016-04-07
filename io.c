@@ -927,7 +927,8 @@ Fsystem2(obj, str)
 struct timeval *time_timeval();
 
 #ifdef __linux__
-#   define READ_PENDING(fp) ((fp)->_gptr < (fp)->_egptr > 0)
+//#   define READ_PENDING(fp) ((fp)->_gptr < (fp)->_egptr > 0)
+#   define READ_PENDING(fp) 0
 #else
 # ifdef __SLBF
 #   define READ_PENDING(fp) ((fp)->_r > 0)

@@ -15,13 +15,18 @@
 
 #include "defines.h"
 
+#include <stdio.h>
+#include <time.h>
+#include <string.h>
+#include <stdarg.h>
+
 #ifdef __STDC__
 #else
 #define volatile
 #define const
 #endif
 
-#if defined(HAVE_ALLOCA_H) && !defined(__GNUC__)
+#if defined(HAVE_ALLOCA_H)
 #include <alloca.h>
 #endif
 
@@ -288,11 +293,307 @@ void rb_define_attr();
 ID rb_intern();
 char *rb_id2name();
 
-VALUE rb_funcall();
-int rb_scan_args();
+VALUE rb_funcall(VALUE recv, ID mid, int n, ...);
+int rb_scan_args(VALUE args, char *fmt, ...);
 
 VALUE rb_yield();
 
 extern int verbose, debug;
+
+/*** from cproto ***/
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include "st.h"
+#include "node.h"
+#include "re.h"
+#include "io.h"
+/* array.c */
+VALUE ary_new2(int len);
+VALUE ary_new(void);
+VALUE ary_new3(int n, ...);
+VALUE ary_new4(int n, VALUE *elts);
+VALUE assoc_new(VALUE elm1, VALUE elm2);
+VALUE Fary_push(struct RArray *ary, VALUE item);
+VALUE Fary_pop(struct RArray *ary);
+VALUE Fary_shift(struct RArray *ary);
+VALUE Fary_unshift(struct RArray *ary, int item);
+VALUE ary_entry(struct RArray *ary, int offset);
+VALUE ary_join(struct RArray *ary, struct RString *sep);
+VALUE Fary_to_s(VALUE ary);
+VALUE Fary_sort(struct RArray *ary);
+VALUE Fary_assoc(struct RArray *ary, VALUE key);
+VALUE Fary_rassoc(struct RArray *ary, VALUE value);
+int Init_Array(void);
+/* bignum.c */
+VALUE Fbig_clone(struct RBignum *x);
+void big_2comp(struct RBignum *x);
+VALUE bignorm(struct RBignum *x);
+VALUE uint2big(UINT n);
+VALUE int2big(int n);
+VALUE uint2inum(UINT n);
+VALUE int2inum(int n);
+VALUE str2inum(char *str, int base);
+VALUE big2str(struct RBignum *x, int base);
+int big2int(struct RBignum *x);
+VALUE Fbig_to_i(VALUE x);
+VALUE dbl2big(double d);
+double big2dbl(struct RBignum *x);
+VALUE Fbig_to_f(VALUE x);
+VALUE Fbig_plus(VALUE x, VALUE y);
+VALUE Fbig_minus(VALUE x, VALUE y);
+VALUE Fbig_mul(struct RBignum *x, struct RBignum *y);
+VALUE Fbig_and(struct RBignum *x, struct RBignum *y);
+VALUE Fbig_or(struct RBignum *x, struct RBignum *y);
+VALUE Fbig_xor(struct RBignum *x, struct RBignum *y);
+VALUE Fbig_lshift(struct RBignum *x, VALUE y);
+int Init_Bignum(void);
+/* class.c */
+VALUE class_new(struct RClass *super);
+VALUE single_class_new(struct RClass *super);
+VALUE single_class_clone(struct RClass *class);
+VALUE rb_define_class_id(ID id, struct RBasic *super);
+VALUE rb_define_class(char *name, VALUE super);
+VALUE module_new(void);
+VALUE rb_define_module_id(ID id);
+VALUE rb_define_module(char *name);
+void rb_include_module(struct RClass *class, struct RClass *module);
+void rb_add_method(struct RClass *class, ID mid, NODE *node, enum mth_scope scope);
+void rb_define_method(struct RClass *class, char *name, VALUE (*func)(void), int argc);
+void rb_define_func(struct RClass *class, char *name, VALUE (*func)(void), int argc);
+void rb_undef_method(struct RClass *class, char *name);
+VALUE rb_single_class(struct RBasic *obj);
+void rb_define_single_method(VALUE obj, char *name, VALUE (*func)(void), int argc);
+void rb_define_mfunc(struct RClass *class, char *name, VALUE (*func)(void), int argc);
+void rb_define_alias(struct RClass *class, char *name1, char *name2);
+void rb_define_attr(struct RClass *class, char *name, int pub);
+void rb_define_single_attr(VALUE obj, char *name, int pub);
+int rb_scan_args(VALUE args, char *fmt, ...);
+/* compar.c */
+int Init_Comparable(void);
+/* dbm.c */
+int Init_DBM(void);
+/* dict.c */
+VALUE Fdic_new(VALUE class);
+VALUE Fdic_aset(struct RDict *dic, VALUE key, VALUE val);
+VALUE Fgetenv(VALUE obj, struct RString *name);
+VALUE Fsetenv(VALUE obj, struct RString *name, struct RString *value);
+int Init_Dict(void);
+/* dir.c */
+int Init_Dir(void);
+/* dln.c */
+char *dln_find_exe(char *fname, char *path);
+char *dln_find_file(char *fname, char *path);
+int dln_init(char *file);
+int dln_load(char *file);
+int dln_load_lib(char *file);
+/* enum.c */
+void rb_each(VALUE obj);
+int Init_Enumerable(void);
+/* error.c */
+int Error(char *fmt, ...);
+int Warning(char *fmt, ...);
+int Fatal(char *fmt, ...);
+int Bug(char *fmt, ...);
+int Fail(char *fmt, ...);
+int rb_sys_fail(char *mesg);
+int yyerror(char *msg);
+int WrongType(VALUE x, int t);
+/* etc.c */
+int Init_Etc(void);
+/* eval.c */
+int main(int argc, char *argv[]);
+VALUE TopLevel(char *script, int argc, char **argv);
+void rb_trap_eval(VALUE cmd);
+VALUE obj_responds_to(VALUE obj, struct RString *msg);
+void rb_exit(int status);
+VALUE Fexit(VALUE obj, VALUE args);
+void rb_break(void);
+void rb_redo(void);
+void rb_retry(void);
+void rb_fail(VALUE mesg);
+VALUE Ffail(VALUE self, VALUE args);
+int iterator_p(void);
+VALUE rb_yield(VALUE val);
+VALUE rb_iterate(VALUE (*it_proc)(void), char *data1, VALUE (*bl_proc)(void), char *data2);
+VALUE rb_resque(VALUE (*b_proc)(void), char *data1, VALUE (*r_proc)(void), char *data2);
+VALUE rb_ensure(VALUE (*b_proc)(void), char *data1, VALUE (*e_proc)(void), char *data2);
+VALUE rb_apply(VALUE recv, ID mid, VALUE args);
+VALUE Fapply(VALUE recv, VALUE args);
+VALUE rb_funcall(VALUE recv, ID mid, int n, ...);
+VALUE Fcaller(VALUE obj, VALUE args);
+VALUE Feval(VALUE obj, struct RString *src);
+VALUE Fload(VALUE obj, struct RString *fname);
+int Frequire(VALUE obj, struct RString *fname);
+int Init_load(void);
+/* file.c */
+VALUE file_open(char *fname, char *mode);
+int cache_stat(char *path, struct stat *st);
+int eaccess(char *path, int mode);
+int Ffile_S(VALUE obj, struct RString *fname);
+int Ffile_chown2(VALUE obj, VALUE owner, VALUE group);
+int Ffile_readlink(VALUE obj, struct RString *path);
+int Init_File(void);
+/* gc.c */
+void *xmalloc(unsigned long size);
+void *xcalloc(unsigned long n, unsigned long size);
+void *xrealloc(void *ptr, unsigned long size);
+void rb_global_variable(VALUE *var);
+VALUE Fgc_enable(void);
+VALUE Fgc_disable(void);
+VALUE Fgc_threshold(VALUE obj);
+VALUE Fgc_set_threshold(VALUE obj, VALUE val);
+struct RBasic *newobj(unsigned long size);
+int literalize(struct RBasic *obj);
+void unliteralize(struct RBasic *obj);
+int gc(void);
+int mark(register struct RBasic *obj);
+int sweep(void);
+int obj_free(struct RBasic *obj);
+int Init_GC(void);
+/* inits.c */
+int rb_call_inits(void);
+/* io.c */
+void io_free_OpenFile(OpenFile *fptr);
+int io_mode_flags(char *mode);
+FILE *rb_fdopen(int fd, char *mode);
+VALUE rb_check_str(VALUE val, ID id);
+void io_ctl(VALUE obj, VALUE req, struct RString *arg, int io_p);
+int Init_IO(void);
+/* math.c */
+int Init_Math(void);
+/* methods.c */
+NODE *rb_get_method_body(struct RClass *class, ID id, int envset, enum mth_scope scope);
+void rb_alias(struct RClass *class, ID name, ID def);
+void rb_clear_cache(struct RMethod *body);
+void rb_clear_cache2(struct RClass *class);
+/* numeric.c */
+VALUE float_new(double flt);
+int Fflo_pow(struct RFloat *x, struct RFloat *y);
+int num2int(VALUE val);
+VALUE num2fix(VALUE val);
+VALUE Ffix_clone(VALUE num);
+VALUE fix2str(VALUE x, int base);
+VALUE Ffix_to_s(VALUE in);
+int Init_Numeric(void);
+/* object.c */
+VALUE Fkrn_to_s(VALUE obj);
+VALUE Fkrn_inspect(VALUE obj);
+VALUE obj_is_member_of(VALUE obj, VALUE c);
+VALUE obj_is_kind_of(VALUE obj, VALUE c);
+VALUE obj_alloc(VALUE class);
+int Init_Object(void);
+/* pack.c */
+int Init_pack(void);
+/* process.c */
+int rb_waitpid(int pid, int flags);
+int rb_proc_exec(char *str);
+void rb_syswait(int pid);
+void mark_trap_list(void);
+void rb_trap_exit(void);
+int Fsleep(int argc, VALUE *argv);
+int Init_process(void);
+/* random.c */
+int Init_Random(void);
+/* range.c */
+VALUE range_new(VALUE class, VALUE start, VALUE end);
+int Init_Range(void);
+/* re.c */
+int str_cicmp(struct RString *str1, struct RString *str2);
+Regexp *make_regexp(char *s, int len);
+int research(struct RRegexp *reg, struct RString *str, int start, int ignorecase);
+VALUE re_last_match(ID id);
+int get_macth1(ID id);
+int get_macth2(ID id);
+int get_macth3(ID id);
+int get_macth4(ID id);
+int get_macth5(ID id);
+int get_macth6(ID id);
+int get_macth7(ID id);
+int get_macth8(ID id);
+int get_macth9(ID id);
+void reg_free(Regexp *rp);
+void reg_error(const char *s);
+VALUE regexp_new(char *s, int len);
+VALUE re_regcomp(struct RString *str);
+VALUE Freg_match(struct RRegexp *re, struct RString *str);
+VALUE Freg_match2(struct RRegexp *re);
+VALUE re_regsub(struct RString *str);
+void Init_Regexp(void);
+/* regex.c */
+long re_set_syntax(long syntax);
+char *re_compile_pattern(char *pattern, size_t size, struct re_pattern_buffer *bufp);
+void re_compile_fastmap(struct re_pattern_buffer *bufp);
+int re_search(struct re_pattern_buffer *pbufp, char *string, int size, int startpos, int range, struct re_registers *regs);
+int re_search_2(struct re_pattern_buffer *pbufp, char *string1, int size1, char *string2, int size2, int startpos, register int range, struct re_registers *regs, int mstop);
+int re_match(struct re_pattern_buffer *pbufp, char *string, int size, int pos, struct re_registers *regs);
+int re_match_2(struct re_pattern_buffer *pbufp, char *string1_arg, int size1, char *string2_arg, int size2, int pos, struct re_registers *regs, int mstop);
+/* ruby.c */
+void rb_load_file(char *fname);
+void rb_main(int argc, char **argv);
+/* socket.c */
+/* sprintf.c */
+VALUE Fsprintf(int argc, VALUE *argv);
+/* st.c */
+st_table *st_init_table_with_params(int (*compare)(void), int (*hash)(void), int size, int density, double grow_factor, int reorder_flag);
+st_table *st_init_table(int (*compare)(void), int (*hash)(void));
+int st_free_table(st_table *table);
+int st_lookup(st_table *table, register char *key, char **value);
+int st_insert(register st_table *table, register char *key, char *value);
+int st_add_direct(st_table *table, char *key, char *value);
+int st_find_or_add(st_table *table, char *key, char ***slot);
+st_table *st_copy(st_table *old_table);
+int st_delete(register st_table *table, register char **key, char **value);
+int st_foreach(st_table *table, enum st_retval (*func)(void), char *arg);
+int st_strhash(register char *string, int modulus);
+/* string.c */
+VALUE str_new(char *ptr, UINT len);
+VALUE str_new2(char *ptr);
+VALUE str_new3(struct RString *str);
+VALUE obj_as_string(VALUE obj);
+VALUE Fstr_clone(struct RString *str);
+VALUE Fstr_plus(struct RString *str1, struct RString *str2);
+VALUE Fstr_times(struct RString *str, VALUE times);
+VALUE str_substr(struct RString *str, int start, int len);
+VALUE str_subseq(struct RString *str, int beg, int end);
+void str_modify(struct RString *str);
+VALUE str_grow(struct RString *str, UINT len);
+VALUE str_cat(struct RString *str, char *ptr, UINT len);
+int str_cmp(struct RString *str1, struct RString *str2);
+int Init_String(void);
+/* struct.c */
+VALUE struct_new(char *name, ...);
+int Init_Struct(void);
+/* time.c */
+VALUE time_new(int sec, int usec);
+struct timeval *time_timeval(VALUE time);
+int Init_Time(void);
+/* variable.c */
+st_table *new_idhash(void);
+void Init_var_tables(void);
+void rb_name_class(VALUE class, ID id);
+int mark_global_tbl(void);
+struct global_entry *rb_global_entry(ID id);
+void rb_define_variable(char *name, VALUE *var, VALUE (*get_hook)(void), VALUE (*set_hook)(void));
+void rb_define_varhook(char *name, VALUE (*get_hook)(void), VALUE (*set_hook)(void));
+VALUE rb_readonly_hook(VALUE val, ID id);
+VALUE rb_id2class(ID id);
+VALUE rb_gvar_get(struct global_entry *entry);
+int rb_ivar_get_1(struct RBasic *obj, ID id);
+VALUE rb_ivar_get(ID id);
+VALUE rb_mvar_get(ID id);
+VALUE rb_const_get(ID id);
+VALUE rb_gvar_set(struct global_entry *entry, VALUE val);
+VALUE rb_gvar_set2(char *name, VALUE val);
+int rb_ivar_set_1(struct RBasic *obj, ID id, VALUE val);
+VALUE rb_ivar_set(ID id, VALUE val);
+VALUE rb_const_set(ID id, VALUE val);
+void rb_define_const(struct RClass *class, char *name, VALUE val);
+VALUE rb_iv_get(VALUE obj, char *name);
+VALUE rb_iv_set(VALUE obj, char *name, VALUE val);
+VALUE Fdefined(VALUE obj, struct RString *name);
+/* version.c */
+int Init_version(void);
+int show_version(void);
 
 #endif

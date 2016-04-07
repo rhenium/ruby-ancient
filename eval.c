@@ -1561,14 +1561,8 @@ Fapply(recv, args)
     return rb_apply(recv, mid, rest);
 }
 
-#include <varargs.h>
-
 VALUE
-rb_funcall(recv, mid, n, va_alist)
-    VALUE recv;
-    ID mid;
-    int n;
-    va_dcl
+rb_funcall(VALUE recv, ID mid, int n, ...)
 {
     va_list ar;
     int argc;
@@ -1580,7 +1574,7 @@ rb_funcall(recv, mid, n, va_alist)
 	argc = n + 1;
 	argv = (VALUE*)alloca(sizeof(VALUE)*argc);
 
-	va_start(ar);
+	va_start(ar, n);
 	for (i=1;i<argc;i++) {
 	    argv[i] = va_arg(ar, VALUE);
 	}

@@ -76,12 +76,8 @@ struct_add(s, mem, val)
     rb_define_single_method(s, mem, Fstruct_access, 0);
 }
 
-#include <varargs.h>
-
 VALUE
-struct_new(name, va_alist)
-    char *name;
-    va_dcl
+struct_new(char *name, ...)
 {
     VALUE st;
     va_list args;
@@ -89,13 +85,13 @@ struct_new(name, va_alist)
 
     GC_LINK;
     GC_PRO3(st, struct_alloc(C_Struct,name));
-    va_start(args);
+    va_start(args, name);
 
     while (mem = va_arg(args, char*)) {
 	struct_add(st, mem, va_arg(args, VALUE));
     }
 
-    va_end(vargs);
+    va_end(args);
     GC_UNLINK;
 
     return st;

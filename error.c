@@ -13,7 +13,6 @@
 #include "ruby.h"
 #include "env.h"
 #include <stdio.h>
-#include <varargs.h>
 
 extern char *sourcefile;
 extern int   sourceline;
@@ -53,73 +52,57 @@ err_print(fmt, args)
     }
 }
 
-yyerror(msg)
-    char *msg;
-{
-    Error("%s", msg);
-}
-
-Error(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Error(char *fmt, ...)
 {
     va_list args;
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(fmt, args);
     va_end(args);
     nerrs++;
 }
 
-Warning(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Warning(char *fmt, ...)
 {
     char buf[BUFSIZ]; 
     va_list args;
 
     sprintf(buf, "warning: %s", fmt);
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(buf, args);
     va_end(args);
 }
 
-Fatal(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Fatal(char *fmt, ...)
 {
     va_list args;
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(fmt, args);
     va_end(args);
     rb_exit(1);
 }
 
-Bug(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Bug(char *fmt, ...)
 {
     char buf[BUFSIZ]; 
     va_list args;
 
     sprintf(buf, "[BUG] %s", fmt);
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(buf, args);
     va_end(args);
     abort();
 }
 
-Fail(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Fail(char *fmt, ...)
 {
     va_list args;
     char buf[BUFSIZ]; 
 
-    va_start(args);
+    va_start(args, fmt);
     vsprintf(buf, fmt, args);
     va_end(args);
 
@@ -139,6 +122,12 @@ rb_sys_fail(mesg)
 
     errno = 0;
     rb_fail(str_new2(buf));
+}
+
+yyerror(msg)
+    char *msg;
+{
+    Error("%s", msg);
 }
 
 static char *builtin_types[] = {

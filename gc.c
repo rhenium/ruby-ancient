@@ -432,7 +432,7 @@ obj_free(obj)
 	break;
       case T_MODULE:
       case T_CLASS:
-	st_foreach(RCLASS(obj)->m_tbl, freemethod);
+	st_foreach(RCLASS(obj)->m_tbl, freemethod, Qnil);
 	st_free_table(RCLASS(obj)->m_tbl);
 	if (RCLASS(obj)->c_tbl)
 	    st_free_table(RCLASS(obj)->c_tbl);
