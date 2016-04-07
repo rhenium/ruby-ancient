@@ -13,7 +13,7 @@
 #include "ruby.h"
 #include "env.h"
 #include <stdio.h>
-#include <varargs.h>
+#include <stdarg.h>
 
 extern char *sourcefile;
 extern int   sourceline;
@@ -68,36 +68,30 @@ err_print(fmt, args)
 }
 
 void
-Error(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Error(char *fmt, ...)
 {
     va_list args;
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(fmt, args);
     va_end(args);
     nerrs++;
 }
 
 void
-Error_Append(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Error_Append(char *fmt, ...)
 {
     va_list args;
     char buf[BUFSIZ];
 
-    va_start(args);
+    va_start(args, fmt);
     vsprintf(buf, fmt, args);
     va_end(args);
     err_append(buf);
 }
 
 void
-Warning(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Warning(char *fmt, ...)
 {
     char buf[BUFSIZ];
     va_list args;
@@ -106,15 +100,13 @@ Warning(fmt, va_alist)
 
     sprintf(buf, "warning: %s", fmt);
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(buf, args);
     va_end(args);
 }
 
 void
-Bug(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Bug(char *fmt, ...)
 {
     char buf[BUFSIZ];
     va_list args;
@@ -122,7 +114,7 @@ Bug(fmt, va_alist)
     sprintf(buf, "[BUG] %s", fmt);
     rb_in_eval = 0;
 
-    va_start(args);
+    va_start(args, fmt);
     err_print(buf, args);
     va_end(args);
     abort();
@@ -155,8 +147,6 @@ static struct types {
     T_NODE,	"Node",		/* internal use: syntax tree node */
     -1,		0,
 };
-
-extern void TypeError();
 
 void
 Check_Type(x, t)
@@ -228,7 +218,7 @@ exc_new2(etype, str)
     struct RString *str;
 {
     Check_Type(str, T_STRING);
-    return exc_new(etype, str->ptr, str->len);
+    return exc_new0(etype, str->ptr, str->len);
 }
 
 static VALUE
@@ -287,7 +277,7 @@ Init_Exception()
     va_list args;\
     char buf[BUFSIZ];\
 \
-    va_start(args);\
+    va_start(args, fmt);\
     vsprintf(buf, fmt, args);\
     va_end(args);\
 \
@@ -295,49 +285,37 @@ Init_Exception()
 }
 
 void
-Raise(exc, fmt, va_alist)
-    char *fmt;
-    va_dcl
+Raise(VALUE exc, char *fmt, ...)
 {
     RAISE_ERROR(exc);
 }
 
 void
-TypeError(fmt, va_alist)
-    char *fmt;
-    va_dcl
+TypeError(char *fmt, ...)
 {
     RAISE_ERROR(eTypeError);
 }
 
 void
-ArgError(fmt, va_alist)
-    char *fmt;
-    va_dcl
+ArgError(char *fmt, ...)
 {
     RAISE_ERROR(eArgError);
 }
 
 void
-NameError(fmt, va_alist)
-    char *fmt;
-    va_dcl
+NameError(char *fmt, ...)
 {
     RAISE_ERROR(eNameError);
 }
 
 void
-IndexError(fmt, va_alist)
-    char *fmt;
-    va_dcl
+IndexError(char *fmt, ...)
 {
     RAISE_ERROR(eIndexError);
 }
 
 void
-Fail(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Fail(char *fmt, ...)
 {
     RAISE_ERROR(eRuntimeError);
 }
@@ -351,22 +329,18 @@ rb_notimplement()
 }
 
 void
-LoadError(fmt, va_alist)
-    char *fmt;
-    va_dcl
+LoadError(char *fmt, ...)
 {
     RAISE_ERROR(eLoadError);
 }
 
 void
-Fatal(fmt, va_alist)
-    char *fmt;
-    va_dcl
+Fatal(char *fmt, ...)
 {
     va_list args;
     char buf[BUFSIZ];
 
-    va_start(args);
+    va_start(args, fmt);
     vsprintf(buf, fmt, args);
     va_end(args);
 

@@ -91,7 +91,8 @@ enum_find(argc, argv, obj)
 	return arg.val;
     }
     if (NIL_P(if_none)) return Qnil;
-    return rb_eval_cmd(if_none, Qnil);
+    rb_eval_cmd(if_none, Qnil);
+    /* unreachable */
 }
 
 static void
@@ -275,7 +276,7 @@ index_i(item, iv)
     VALUE item;
     struct i_v_pair *iv;
 {
-    if (rb_equal(item, 1, iv->v)) {
+    if (rb_equal(item, iv->v)) {
 	iv->found = 1;
 	rb_break();
     }

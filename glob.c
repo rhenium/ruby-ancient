@@ -73,7 +73,7 @@
 #ifdef _AIX
 #pragma alloca
 #else
-#if defined(HAVE_ALLOCA_H) && !defined(__GNUC__)
+#if defined(HAVE_ALLOCA_H)
 #include <alloca.h>
 #else
 char *alloca ();

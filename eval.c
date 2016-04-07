@@ -906,7 +906,7 @@ rb_eval(self, node)
 
 	/* nodes for speed-up(top-level loop for -n/-p) */
       case NODE_OPT_N:
-	while (!NIL_P(f_gets())) {
+	while (!NIL_P(f_gets(0, 0))) {
 	    rb_eval(self, node->nd_body);
 	}
 	RETURN(Qnil);
@@ -1843,7 +1843,7 @@ rb_respond_to(obj, id)
     VALUE obj;
     ID id;
 {
-    if (rb_method_boundp(CLASS_OF(obj), id, 0)) {
+    if (method_boundp(CLASS_OF(obj), id, 0)) {
 	return TRUE;
     }
     return FALSE;
@@ -1860,7 +1860,7 @@ krn_respond_to(argc, argv, obj)
 
     rb_scan_args(argc, argv, "11", &mid, &priv);
     id = rb_to_id(mid);
-    if (rb_method_boundp(CLASS_OF(obj), id, !RTEST(priv))) {
+    if (method_boundp(CLASS_OF(obj), id, !RTEST(priv))) {
 	return TRUE;
     }
     return FALSE;
@@ -1870,7 +1870,7 @@ static VALUE
 mod_method_defined(mod, mid)
     VALUE mod, mid;
 {
-    if (rb_method_boundp(mod, rb_to_id(mid), TRUE)) {
+    if (method_boundp(mod, rb_to_id(mid), TRUE)) {
 	return TRUE;
     }
     return FALSE;
@@ -1935,13 +1935,9 @@ f_retry()
     JUMP_TAG2(TAG_RETRY, 0);
 }
 
-#ifdef __GNUC__
-static volatile voidfn rb_longjmp;
-#endif
-
 static VALUE make_backtrace();
 
-static void
+static volatile void
 rb_longjmp(tag, mesg)
     int tag;
     VALUE mesg;
@@ -2755,14 +2751,10 @@ f_send(argc, argv, recv)
     return rb_call(CLASS_OF(recv), recv, mid, argc, argv, 1);
 }
 
-#include <varargs.h>
+#include <stdarg.h>
 
 VALUE
-rb_funcall(recv, mid, n, va_alist)
-    VALUE recv;
-    ID mid;
-    int n;
-    va_dcl
+rb_funcall(VALUE recv, ID mid, int n, ...)
 {
     va_list ar;
     VALUE *argv;
@@ -2772,7 +2764,7 @@ rb_funcall(recv, mid, n, va_alist)
 
 	argv = ALLOCA_N(VALUE, n);
 
-	va_start(ar);
+	va_start(ar, n);
 	for (i=0;i<n;i++) {
 	    argv[i] = va_arg(ar, VALUE);
 	}

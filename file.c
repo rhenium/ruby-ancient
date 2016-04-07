@@ -46,9 +46,6 @@ stuct timeval {
 char *strrchr();
 #endif
 
-char *strdup();
-char *getenv();
-
 extern VALUE cIO;
 VALUE cFile;
 VALUE mFileTest;

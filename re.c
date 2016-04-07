@@ -209,7 +209,7 @@ match_to_a(match)
     struct RMatch *match;
 {
     struct re_registers *regs = match->regs;
-    VALUE ary = ary_new(regs->num_regs);
+    VALUE ary = ary_new2(regs->num_regs);
     int i;
 
     for (i=0; i<regs->num_regs; i++) {
@@ -692,7 +692,7 @@ Init_Regexp()
 
     rb_define_virtual_variable("$~", match_getter, match_setter);
 
-    rb_define_variable("$=", &ignorecase, 0);
+    rb_define_variable("$=", &ignorecase);
     rb_define_virtual_variable("$KCODE", kcode_getter, kcode_setter);
 
     cRegexp  = rb_define_class("Regexp", cObject);

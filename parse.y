@@ -1242,7 +1242,6 @@ VALUE newregexp();
 VALUE newstring();
 VALUE newfloat();
 VALUE newinteger();
-char *strdup();
 
 static NODE *str_extend();
 
@@ -2998,7 +2997,7 @@ logop(type, left, right)
 {
     value_expr(left);
 
-    return newnode(type, cond(left), cond(right));
+    return newnode(type, cond(left), cond(right), NULL);
 }
 
 st_table *new_idhash();
@@ -3241,8 +3240,6 @@ st_table *rb_symbol_tbl;
 void
 Init_sym()
 {
-    int strcmp();
-
     sym_tbl = st_init_strtable();
     rb_global_variable(&cur_cref);
 }

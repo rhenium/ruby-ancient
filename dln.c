@@ -49,10 +49,6 @@ void *xrealloc();
 #  include <strings.h>
 #endif
 
-char *strdup();
-
-char *getenv();
-
 int eaccess();
 
 #if defined(HAVE_DLOPEN) && !defined(USE_DLN_A_OUT)

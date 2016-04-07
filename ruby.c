@@ -32,7 +32,6 @@ int verbose = FALSE;
 static int sflag = FALSE;
 
 char *inplace = FALSE;
-char *strdup();
 
 extern int yydebug;
 extern int nerrs;

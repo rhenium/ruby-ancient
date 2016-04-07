@@ -259,7 +259,7 @@ static VALUE
 hash_clear(hash)
     struct RHash *hash;
 {
-    st_foreach(hash->tbl, clear_i);
+    st_foreach(hash->tbl, clear_i, 0);
 
     return (VALUE)hash;
 }
@@ -308,7 +308,7 @@ static VALUE
 hash_each_value(hash)
     struct RHash *hash;
 {
-    st_foreach(hash->tbl, each_value_i);
+    st_foreach(hash->tbl, each_value_i, 0);
     return (VALUE)hash;
 }
 
@@ -324,7 +324,7 @@ static VALUE
 hash_each_key(hash)
     struct RHash *hash;
 {
-    st_foreach(hash->tbl, each_key_i);
+    st_foreach(hash->tbl, each_key_i, 0);
     return (VALUE)hash;
 }
 
@@ -340,7 +340,7 @@ static VALUE
 hash_each_pair(hash)
     struct RHash *hash;
 {
-    st_foreach(hash->tbl, each_pair_i);
+    st_foreach(hash->tbl, each_pair_i, 0);
     return (VALUE)hash;
 }
 

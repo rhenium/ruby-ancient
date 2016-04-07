@@ -12,6 +12,8 @@
 
 #include "ruby.h"
 
+#include <stdarg.h>
+
 VALUE cArray;
 
 VALUE rb_to_a();
@@ -53,12 +55,8 @@ ary_new()
     return ary_new2(ARY_DEFAULT_SIZE);
 }
 
-#include <varargs.h>
-
 VALUE
-ary_new3(n, va_alist)
-    int n;
-    va_dcl
+ary_new3(int n, ...)
 {
     va_list ar;
     struct RArray* ary;
@@ -69,7 +67,7 @@ ary_new3(n, va_alist)
     }
     ary = (struct RArray*)ary_new2(n<ARY_DEFAULT_SIZE?ARY_DEFAULT_SIZE:n);
 
-    va_start(ar);
+    va_start(ar, n);
     for (i=0; i<n; i++) {
 	ary->ptr[i] = va_arg(ar, VALUE);
     }

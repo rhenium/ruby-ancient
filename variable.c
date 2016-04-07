@@ -432,7 +432,7 @@ f_trace_var(argc, argv)
 	cmd = f_lambda();
     }
     if (NIL_P(cmd)) {
-	return f_untrace_var(argc, argv, Qnil);
+	return f_untrace_var(argc, argv);
     }
     id = rb_to_id(var);
     if (!st_lookup(global_tbl, id, &entry)) {

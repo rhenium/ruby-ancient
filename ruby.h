@@ -19,6 +19,10 @@
 
 #include "defines.h"
 
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #ifndef __STDC__
 # define volatile
 # ifdef __GNUC__
@@ -31,7 +35,7 @@
 # define _(args) args
 #endif
 
-#if defined(HAVE_ALLOCA_H) && !defined(__GNUC__)
+#if defined(HAVE_ALLOCA_H)
 #include <alloca.h>
 #endif
 
@@ -278,80 +282,16 @@ int rb_special_const_p();
 #define MEMCPY(p1,p2,type,n) memcpy((p1), (p2), sizeof(type)*(n))
 #define MEMMOVE(p1,p2,type,n) memmove((p1), (p2), sizeof(type)*(n))
 
-void *xmalloc();
-void *xcalloc();
-void *xrealloc();
-
-VALUE rb_define_class();
-VALUE rb_define_module();
-void rb_include_module();
-void rb_extend_object();
-
-void rb_define_variable();
-void rb_define_const();
-void rb_define_global_const();
-
-void rb_define_method();
-void rb_define_singleton_method();
-void rb_undef_method();
-void rb_define_alias();
-void rb_define_attr();
-
-ID rb_intern();
-char *rb_id2name();
-ID rb_to_id();
-
-char *rb_class2name();
-int rb_method_boundp();
-
-VALUE rb_eval_string();
-VALUE rb_funcall();
-VALUE rb_funcall2();
-int rb_scan_args();
-
-VALUE rb_ivar_get();
-VALUE rb_ivar_set();
-
-VALUE rb_iv_get();
-VALUE rb_iv_set();
-void rb_const_set();
-
-VALUE rb_yield();
-int iterator_p();
-
-int rb_equal();
-
 extern int verbose, debug;
 
-#ifdef __GNUC__
-typedef void voidfn ();
-volatile voidfn Raise;
-volatile voidfn Fail;
-volatile voidfn Fatal;
-volatile voidfn Bug;
-volatile voidfn WrongType;
-volatile voidfn rb_sys_fail;
-volatile voidfn rb_break;
-volatile voidfn rb_exit;
-volatile voidfn rb_fatal;
-volatile voidfn rb_raise;
-volatile voidfn rb_notimplement;
-#else
-void Raise();
-void Fail();
-void Fatal();
-void Bug();
-void WrongType();
-void rb_sys_fail();
-void rb_break();
-void rb_exit();
-void rb_fatal();
-void rb_raise();
-void rb_notimplement();
-#endif
+#include "st.h"
+#include "node.h"
+#include "re.h"
+#include "io.h"
 
-void Error();
-void Warning();
+typedef struct RVALUE RVALUE;
+struct FRAME;
+#include "cproto.h"
 
 #if defined(EXTLIB) && defined(USE_DLN_A_OUT)
 /* hook for external modules */
